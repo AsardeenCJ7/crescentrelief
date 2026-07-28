@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "../../context/AuthContext";
 
@@ -18,6 +19,7 @@ export const LoginModal = ({ isOpen, onClose, onSwitchToRegister }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const { login, googleAuth } = useAuth();
+  const navigate = useNavigate();
 
   if (!isOpen) return null;
 
@@ -33,10 +35,19 @@ export const LoginModal = ({ isOpen, onClose, onSwitchToRegister }) => {
       return;
     }
     setError("");
-    login(email, password);
-    setEmail("");
-    setPassword("");
-    onClose();
+    try {
+      const loggedInUser = login(email, password);
+      setEmail("");
+      setPassword("");
+      onClose();
+      if (loggedInUser.role === "superadmin" || loggedInUser.role === "admin") {
+        navigate("/admin");
+      } else {
+        navigate("/dashboard");
+      }
+    } catch (err) {
+      setError(err.message);
+    }
   };
 
   return (

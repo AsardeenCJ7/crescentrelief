@@ -1,11 +1,14 @@
 import { useState } from "react";
 import { formatCurrency, getDaysLeftLabel } from "../../utils/formatters";
 import ProgressBar from "../common/ProgressBar";
+import { useAuth } from "../../context/AuthContext";
 
 const DonationWidget = ({ campaign }) => {
   const [amount, setAmount] = useState(50);
   const [customAmount, setCustomAmount] = useState("");
   const [type, setType] = useState("one-time");
+  
+  const { isAuthenticated, setShowLoginModal } = useAuth();
 
   const percentFunded = Math.round((campaign.raised / campaign.goal) * 100);
   const predefinedAmounts = [10, 25, 50, 100];
@@ -14,6 +17,15 @@ const DonationWidget = ({ campaign }) => {
     const val = e.target.value.replace(/[^0-9]/g, "");
     setCustomAmount(val);
     if (val) setAmount(Number(val));
+  };
+  
+  const handleCheckout = () => {
+    if (!isAuthenticated) {
+      setShowLoginModal(true);
+      return;
+    }
+    // Proceed with donation logic
+    alert(`Processing ${type} donation of £${amount}`);
   };
 
   return (
@@ -89,7 +101,7 @@ const DonationWidget = ({ campaign }) => {
         </div>
 
         {/* Checkout Button */}
-        <button className="btn-accent w-full py-4 text-base rounded-2xl shadow-button hover:shadow-lg">
+        <button onClick={handleCheckout} className="btn-accent w-full py-4 text-base rounded-2xl shadow-button hover:shadow-lg">
           Donate {amount > 0 ? `£${amount}` : ""}
         </button>
 

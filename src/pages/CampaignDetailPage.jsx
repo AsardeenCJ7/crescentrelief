@@ -6,11 +6,23 @@ import Badge from "../components/common/Badge";
 import DonationWidget from "../components/campaign/DonationWidget";
 import CampaignVideo from "../components/campaign/CampaignVideo";
 import ReactMarkdown from "react-markdown";
+import { useAuth } from "../context/AuthContext";
 
 const CampaignDetailPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const [campaign, setCampaign] = useState(null);
+  
+  const { isAuthenticated, setShowLoginModal } = useAuth();
+  const [isFavorite, setIsFavorite] = useState(false);
+
+  const handleFavoriteClick = () => {
+    if (!isAuthenticated) {
+      setShowLoginModal(true);
+      return;
+    }
+    setIsFavorite(!isFavorite);
+  };
 
   useEffect(() => {
     // Scroll to top on load
@@ -51,15 +63,28 @@ const CampaignDetailPage = () => {
               animate={{ opacity: 1, y: 0 }}
               className="max-w-3xl"
             >
-              <div className="flex gap-3 mb-4">
-                <Badge variant={badgeVariantMap[campaign.badgeColor] || "primary"}>
-                  {campaign.category}
-                </Badge>
-                {campaign.urgent && (
-                  <Badge variant="emergency" icon="emergency">
-                    Urgent Appeal
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex gap-3">
+                  <Badge variant={badgeVariantMap[campaign.badgeColor] || "primary"}>
+                    {campaign.category}
                   </Badge>
-                )}
+                  {campaign.urgent && (
+                    <Badge variant="emergency" icon="emergency">
+                      Urgent Appeal
+                    </Badge>
+                  )}
+                </div>
+                <button
+                  onClick={handleFavoriteClick}
+                  className="w-12 h-12 bg-white/10 hover:bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center transition-colors border border-white/20"
+                >
+                  <span 
+                    className={`material-symbols-outlined text-[24px] transition-colors ${isFavorite ? 'text-rose-500' : 'text-white'}`}
+                    style={{ fontVariationSettings: isFavorite ? "'FILL' 1" : "'FILL' 0" }}
+                  >
+                    favorite
+                  </span>
+                </button>
               </div>
               <h1 className="font-heading font-extrabold text-4xl sm:text-5xl md:text-6xl text-white mb-5 tracking-tight text-balance leading-[1.1]">
                 {campaign.title}

@@ -152,11 +152,7 @@ const Navbar = ({ darkMode, toggleDark }) => {
   const scrolled = useScrolled(60);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [activeDropdown, setActiveDropdown] = useState(null);
-  const { user, isAuthenticated, logout } = useAuth();
-
-  // Auth Modal States
-  const [showLogin, setShowLogin] = useState(false);
-  const [showRegister, setShowRegister] = useState(false);
+  const { user, isAuthenticated, logout, showLoginModal, setShowLoginModal, showRegisterModal, setShowRegisterModal } = useAuth();
 
   useEffect(() => {
     if (mobileOpen) document.body.style.overflow = "hidden";
@@ -240,7 +236,7 @@ const Navbar = ({ darkMode, toggleDark }) => {
                 <UserProfileDropdown user={user} onLogout={logout} />
               ) : (
                 <button
-                  onClick={() => setShowLogin(true)}
+                  onClick={() => setShowLoginModal(true)}
                   className="hidden lg:block text-sm font-semibold text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-white transition-colors"
                 >
                   Sign In
@@ -356,7 +352,7 @@ const Navbar = ({ darkMode, toggleDark }) => {
                   </button>
                 ) : (
                   <button
-                    onClick={() => { setMobileOpen(false); setShowLogin(true); }}
+                    onClick={() => { setMobileOpen(false); setShowLoginModal(true); }}
                     className="btn-secondary w-full rounded-full justify-center text-sm"
                   >
                     Sign In
@@ -376,14 +372,14 @@ const Navbar = ({ darkMode, toggleDark }) => {
 
       {/* Auth Modals */}
       <LoginModal
-        isOpen={showLogin}
-        onClose={() => setShowLogin(false)}
-        onSwitchToRegister={() => { setShowLogin(false); setShowRegister(true); }}
+        isOpen={showLoginModal}
+        onClose={() => setShowLoginModal(false)}
+        onSwitchToRegister={() => { setShowLoginModal(false); setShowRegisterModal(true); }}
       />
       <RegisterModal
-        isOpen={showRegister}
-        onClose={() => setShowRegister(false)}
-        onSwitchToLogin={() => { setShowRegister(false); setShowLogin(true); }}
+        isOpen={showRegisterModal}
+        onClose={() => setShowRegisterModal(false)}
+        onSwitchToLogin={() => { setShowRegisterModal(false); setShowLoginModal(true); }}
       />
     </>
   );

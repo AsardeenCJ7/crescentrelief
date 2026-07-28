@@ -1,8 +1,10 @@
-import { Link } from "react-router-dom";
+import { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import Badge from "../common/Badge";
 import ProgressBar from "../common/ProgressBar";
 import { formatCurrency, getDaysLeftLabel } from "../../utils/formatters";
+import { useAuth } from "../../context/AuthContext";
 
 const badgeVariantMap = {
   emergency: "emergency",
@@ -14,6 +16,29 @@ const badgeVariantMap = {
 
 const CampaignCard = ({ campaign, delay = 0 }) => {
   const percentFunded = Math.round((campaign.raised / campaign.goal) * 100);
+  const { isAuthenticated, setShowLoginModal } = useAuth();
+  const [isFavorite, setIsFavorite] = useState(false);
+  const navigate = useNavigate();
+
+  const handleFavoriteClick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isAuthenticated) {
+      setShowLoginModal(true);
+      return;
+    }
+    setIsFavorite(!isFavorite);
+  };
+
+  const handleDonateClick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isAuthenticated) {
+      setShowLoginModal(true);
+    } else {
+      navigate(`/campaigns/${campaign.id}`);
+    }
+  };
 
   return (
     <motion.div
@@ -21,10 +46,10 @@ const CampaignCard = ({ campaign, delay = 0 }) => {
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: "-50px" }}
       transition={{ duration: 0.5, delay }}
-      className="card group flex flex-col h-full"
+      className="card group flex flex-col h-full relative"
     >
       {/* Image */}
-      <Link to={`/campaigns/${campaign.id}`} className="relative overflow-hidden aspect-[16/9] bg-neutral-100 block">
+      <Link to={`/campaigns/${campaign.id}`} className="relative overflow-hidden aspect-[16/9] bg-neutral-100 block rounded-t-2xl">
         <img
           src={campaign.image}
           alt={campaign.title}
@@ -32,21 +57,36 @@ const CampaignCard = ({ campaign, delay = 0 }) => {
           loading="lazy"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-        {/* Badge */}
-        <div className="absolute top-3 left-3">
+        
+        {/* Top Left Badges */}
+        <div className="absolute top-3 left-3 flex flex-col items-start gap-2 z-10">
           <Badge
             variant={badgeVariantMap[campaign.badgeColor] || "primary"}
             icon={campaign.badgeColor === "emergency" ? "emergency" : undefined}
           >
             {campaign.badge}
           </Badge>
+          {campaign.daysLeft <= 5 && (
+            <div className="bg-emergency text-white text-xs font-bold px-2.5 py-1 rounded-full shadow-md">
+              {getDaysLeftLabel(campaign.daysLeft)}
+            </div>
+          )}
         </div>
-        {/* Days left urgent */}
-        {campaign.daysLeft <= 5 && (
-          <div className="absolute top-3 right-3 bg-emergency text-white text-xs font-bold px-2.5 py-1 rounded-full">
-            {getDaysLeftLabel(campaign.daysLeft)}
-          </div>
-        )}
+
+        {/* Top Right Favorite Button */}
+        <button 
+          onClick={handleFavoriteClick}
+          className="absolute top-3 right-3 w-8 h-8 bg-white/30 hover:bg-white/50 backdrop-blur-md rounded-full flex items-center justify-center transition-colors z-20"
+        >
+          <span 
+            className={`material-symbols-outlined text-[18px] transition-colors ${
+              isFavorite ? 'text-rose-500' : 'text-white'
+            }`}
+            style={{ fontVariationSettings: isFavorite ? "'FILL' 1" : "'FILL' 0" }}
+          >
+            favorite
+          </span>
+        </button>
       </Link>
 
       {/* Body */}
@@ -73,13 +113,20 @@ const CampaignCard = ({ campaign, delay = 0 }) => {
         </div>
 
         {/* CTA */}
-        <Link
-          to={`/campaigns/${campaign.id}`}
-          className="btn-primary w-full rounded-2xl py-2.5 text-sm justify-center"
-        >
-          View Campaign
-          <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            to={`/campaigns/${campaign.id}`}
+            className="btn-secondary flex-1 rounded-xl py-2.5 text-sm justify-center"
+          >
+            Details
+          </Link>
+          <button
+            onClick={handleDonateClick}
+            className="btn-accent flex-[2] rounded-xl py-2.5 text-sm justify-center font-bold"
+          >
+            Donate Now
+          </button>
+        </div>
       </div>
     </motion.div>
   );
