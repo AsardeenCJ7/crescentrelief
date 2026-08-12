@@ -1,8 +1,10 @@
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { 
   TrendingUp, Users, Heart, Wallet, ArrowUpRight, ArrowDownRight, ClipboardList, CheckCircle2
 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
+import { taskService } from "../../services/api";
 
 const STATS = [
   { title: "Total Raised", value: "$1,245,000", trend: "+15%", positive: true, icon: <Wallet /> },
@@ -30,9 +32,38 @@ const itemVariants = {
 };
 
 export default function AdminDashboard() {
-  const { user, tasksList, updateTaskStatus } = useAuth();
-  
-  const myTasks = tasksList.filter(t => t.adminId === user?.id);
+  const { user } = useAuth();
+  const [tasks, setTasks] = useState([]);
+  const [loadingTasks, setLoadingTasks] = useState(true);
+
+  useEffect(() => {
+    if (user?.role === 'admin' || user?.role === 'superadmin') {
+      fetchTasks();
+    }
+  }, [user]);
+
+  const fetchTasks = async () => {
+    try {
+      setLoadingTasks(true);
+      const response = await taskService.getAll({ limit: 10 });
+      setTasks(response.data);
+    } catch (error) {
+      console.error("Failed to fetch tasks:", error);
+    } finally {
+      setLoadingTasks(false);
+    }
+  };
+
+  const handleUpdateTaskStatus = async (taskId, newStatus) => {
+    try {
+      await taskService.update(taskId, { status: newStatus });
+      fetchTasks();
+    } catch (error) {
+      console.error("Failed to update task status:", error);
+      alert("Failed to update task.");
+    }
+  };
+
   return (
     <motion.div variants={containerVariants} initial="hidden" animate="visible" className="space-y-6">
       
@@ -97,7 +128,7 @@ export default function AdminDashboard() {
         {/* Right Column: Transactions & Tasks */}
         <div className="flex flex-col gap-6 h-full">
           {/* Tasks List */}
-          {user?.role === 'admin' && (
+          {(user?.role === 'admin' || user?.role === 'superadmin') && (
             <motion.div variants={itemVariants} className="bg-white dark:bg-neutral-950 p-6 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-sm flex flex-col flex-1 min-h-[300px]">
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-lg font-bold text-neutral-900 dark:text-white flex items-center gap-2">
@@ -105,11 +136,13 @@ export default function AdminDashboard() {
                 </h2>
               </div>
               <div className="space-y-4 flex-1 overflow-y-auto pr-2 custom-scrollbar">
-                {myTasks.length === 0 ? (
+                {loadingTasks ? (
+                  <p className="text-sm text-neutral-500">Loading tasks...</p>
+                ) : tasks.length === 0 ? (
                   <p className="text-sm text-neutral-500">No tasks assigned.</p>
                 ) : (
-                  myTasks.map((task) => (
-                    <div key={task.id} className="p-4 rounded-xl border border-neutral-100 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900/50">
+                  tasks.map((task) => (
+                    <div key={task._id} className="p-4 rounded-xl border border-neutral-100 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900/50">
                       <div className="flex justify-between items-start mb-2">
                         <h4 className="text-sm font-bold text-neutral-900 dark:text-white">{task.title}</h4>
                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${task.status === 'Completed' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-amber-500/10 text-amber-500'}`}>
@@ -119,7 +152,7 @@ export default function AdminDashboard() {
                       <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-3">{task.description}</p>
                       {task.status !== 'Completed' && (
                         <button 
-                          onClick={() => updateTaskStatus(task.id, 'Completed')}
+                          onClick={() => handleUpdateTaskStatus(task._id, 'Completed')}
                           className="text-xs font-semibold text-primary hover:underline flex items-center gap-1"
                         >
                           <CheckCircle2 className="w-3 h-3" /> Mark as done
@@ -133,7 +166,7 @@ export default function AdminDashboard() {
           )}
 
           {/* Recent Transactions List */}
-          <motion.div variants={itemVariants} className={`bg-white dark:bg-neutral-950 p-6 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-sm flex flex-col ${user?.role === 'admin' ? 'flex-1 min-h-[300px]' : 'h-full'}`}>
+          <motion.div variants={itemVariants} className={`bg-white dark:bg-neutral-950 p-6 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-sm flex flex-col ${(user?.role === 'admin' || user?.role === 'superadmin') ? 'flex-1 min-h-[300px]' : 'h-full'}`}>
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-lg font-bold text-neutral-900 dark:text-white">Recent Donations</h2>
               <button className="text-primary text-sm font-semibold hover:underline">View All</button>

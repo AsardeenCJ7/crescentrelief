@@ -1,17 +1,19 @@
 import { useEffect, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { CAMPAIGNS } from "../constants/data";
+import { campaignService, userService } from "../services/api";
 import Badge from "../components/common/Badge";
 import DonationWidget from "../components/campaign/DonationWidget";
 import CampaignVideo from "../components/campaign/CampaignVideo";
 import ReactMarkdown from "react-markdown";
 import { useAuth } from "../context/AuthContext";
+import { Loader2 } from "lucide-react";
 
 const CampaignDetailPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const [campaign, setCampaign] = useState(null);
+  const [loading, setLoading] = useState(true);
   
   const { isAuthenticated, setShowLoginModal } = useAuth();
   const [isFavorite, setIsFavorite] = useState(false);
@@ -25,17 +27,31 @@ const CampaignDetailPage = () => {
   };
 
   useEffect(() => {
-    // Scroll to top on load
     window.scrollTo(0, 0);
-    const found = CAMPAIGNS.find((c) => c.id === parseInt(id));
-    if (found) {
-      setCampaign(found);
-    } else {
-      navigate("/404");
-    }
+    const fetchCampaign = async () => {
+      try {
+        setLoading(true);
+        const res = await campaignService.getById(id);
+        setCampaign(res.data);
+      } catch (error) {
+        console.error("Error fetching campaign:", error);
+        navigate("/404");
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchCampaign();
   }, [id, navigate]);
 
-  if (!campaign) return null; // Or a loading skeleton
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-neutral-50 dark:bg-neutral-950">
+        <Loader2 className="w-12 h-12 text-primary animate-spin" />
+      </div>
+    );
+  }
+
+  if (!campaign) return null;
 
   const badgeVariantMap = {
     emergency: "emergency",

@@ -1,6 +1,6 @@
 import axios from "axios";
 
-const BASE_URL = import.meta.env.VITE_API_URL || "https://api.crescentrelief.org/v1";
+const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api/v1";
 
 const api = axios.create({
   baseURL: BASE_URL,
@@ -24,18 +24,62 @@ api.interceptors.response.use(
 
 export const campaignService = {
   getAll: (params) => api.get("/campaigns", { params }),
+  getStats: () => api.get("/campaigns/stats"),
   getById: (id) => api.get(`/campaigns/${id}`),
+  create: (payload) => api.post("/campaigns", payload),
+  update: (id, payload) => api.put(`/campaigns/${id}`, payload),
+  delete: (id, force = false) => api.delete(`/campaigns/${id}${force ? '?force=true' : ''}`),
   donate: (id, payload) => api.post(`/campaigns/${id}/donate`, payload),
 };
 
 export const authService = {
   login: (payload) => api.post("/auth/login", payload),
   register: (payload) => api.post("/auth/register", payload),
+  verifyOtp: (payload) => api.post("/auth/verify-otp", payload),
+  resendOtp: (payload) => api.post("/auth/resend-otp", payload),
   logout: () => api.post("/auth/logout"),
+  google: (payload) => api.post("/auth/google", payload),
+  getMe: () => api.get("/auth/me"),
+};
+
+export const userService = {
+  getAll: (params) => api.get("/users", { params }),
+  getById: (id) => api.get(`/users/${id}`),
+  update: (id, payload) => api.put(`/users/${id}`, payload),
+  delete: (id) => api.delete(`/users/${id}`),
+  inviteAdmin: (payload) => api.post("/users/invite-admin", payload),
+  updateProfile: (payload) => api.put("/users/profile", payload),
+  changePassword: (payload) => api.put("/users/change-password", payload),
+  getFavourites: () => api.get("/users/favourites"),
+};
+
+export const donationService = {
+  getAll: (params) => api.get("/donations", { params }),
+  getStats: (params) => api.get("/donations/stats", { params }),
+  getMyDonations: () => api.get("/donations/my"),
+};
+
+export const taskService = {
+  getAll: (params) => api.get("/tasks", { params }),
+  create: (payload) => api.post("/tasks", payload),
+  update: (id, payload) => api.put(`/tasks/${id}`, payload),
+  delete: (id) => api.delete(`/tasks/${id}`),
 };
 
 export const newsletterService = {
   subscribe: (email) => api.post("/newsletter/subscribe", { email }),
+};
+
+export const miscService = {
+  uploadFile: (file) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return api.post("/misc/upload", formData, {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+    });
+  },
 };
 
 export default api;

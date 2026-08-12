@@ -1,12 +1,16 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Search, Mail, Ban, Download, Shield, ShieldOff, Plus, ClipboardList, Edit, X, Trash2 } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
+import { userService, taskService } from "../../services/api";
 
 export default function AdminUsers() {
   const [search, setSearch] = useState("");
-  const { user: currentUser, usersList, updateUserRole, inviteAdmin, assignTask, updateProfile, deleteUser } = useAuth();
+  const { user: currentUser } = useAuth();
   
+  const [usersList, setUsersList] = useState([]);
+  const [loading, setLoading] = useState(true);
+
   const isSuperAdmin = currentUser?.role === "superadmin";
   const isAdmin = currentUser?.role === "admin";
 
@@ -15,10 +19,26 @@ export default function AdminUsers() {
   const [mockInviteLink, setMockInviteLink] = useState("");
 
   const [showTaskModal, setShowTaskModal] = useState(false);
-  const [taskForm, setTaskForm] = useState({ adminId: null, title: "", description: "" });
+  const [taskForm, setTaskForm] = useState({ assignedTo: null, title: "", description: "" });
 
   const [showEditModal, setShowEditModal] = useState(false);
   const [editForm, setEditForm] = useState({ userId: null, fullName: "", email: "", phone: "", role: "", status: "" });
+
+  useEffect(() => {
+    fetchUsers();
+  }, []);
+
+  const fetchUsers = async () => {
+    try {
+      setLoading(true);
+      const response = await userService.getAll({ limit: 100 }); // Pagination can be added later
+      setUsersList(response.data);
+    } catch (error) {
+      console.error("Failed to fetch users:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const canEditUser = (targetRole) => {
     if (isSuperAdmin && targetRole !== "superadmin") return true;
@@ -26,34 +46,64 @@ export default function AdminUsers() {
     return false;
   };
 
-  const handleToggleAdmin = (targetUserId, currentRole) => {
-    const newRole = currentRole === "admin" ? "donor" : "admin";
-    updateUserRole(targetUserId, newRole);
+  const handleInviteSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const response = await userService.inviteAdmin(inviteForm);
+      setMockInviteLink(response.data.setupUrl || `http://localhost:5173/setup-password/${response.data.adminId}`);
+      fetchUsers();
+    } catch (error) {
+      console.error("Invite failed:", error);
+      alert("Failed to invite admin.");
+    }
   };
 
-  const handleInviteSubmit = (e) => {
+  const handleTaskSubmit = async (e) => {
     e.preventDefault();
-    const newAdmin = inviteAdmin(inviteForm.fullName, inviteForm.email);
-    setMockInviteLink(`http://localhost:5173/setup-password/${newAdmin.id}`);
+    try {
+      await taskService.create({
+        title: taskForm.title,
+        description: taskForm.description,
+        assignedTo: taskForm.assignedTo,
+        priority: "Medium"
+      });
+      setShowTaskModal(false);
+      setTaskForm({ assignedTo: null, title: "", description: "" });
+      alert("Task assigned successfully.");
+    } catch (error) {
+      console.error("Failed to assign task:", error);
+      alert("Failed to assign task.");
+    }
   };
 
-  const handleTaskSubmit = (e) => {
+  const handleEditSubmit = async (e) => {
     e.preventDefault();
-    assignTask(taskForm.adminId, taskForm.title, taskForm.description);
-    setShowTaskModal(false);
-    setTaskForm({ adminId: null, title: "", description: "" });
+    try {
+      await userService.update(editForm.userId, {
+        fullName: editForm.fullName,
+        email: editForm.email,
+        phone: editForm.phone,
+        role: editForm.role,
+        status: editForm.status
+      });
+      setShowEditModal(false);
+      fetchUsers();
+    } catch (error) {
+      console.error("Failed to update user:", error);
+      alert("Failed to update user.");
+    }
   };
 
-  const handleEditSubmit = (e) => {
-    e.preventDefault();
-    updateProfile(editForm.userId, {
-      fullName: editForm.fullName,
-      email: editForm.email,
-      phone: editForm.phone,
-      role: editForm.role,
-      status: editForm.status
-    });
-    setShowEditModal(false);
+  const handleDeleteUser = async (userId, fullName) => {
+    if (window.confirm(`Are you sure you want to suspend/delete ${fullName}? This action cannot be undone.`)) {
+      try {
+        await userService.delete(userId);
+        fetchUsers();
+      } catch (error) {
+        console.error("Failed to delete user:", error);
+        alert("Failed to delete user.");
+      }
+    }
   };
 
   const filteredUsers = usersList.filter(u => 
@@ -98,99 +148,99 @@ export default function AdminUsers() {
       {/* Table Container */}
       <div className="bg-white dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-2xl shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse min-w-[900px]">
-            <thead>
-              <tr className="bg-neutral-50 dark:bg-neutral-900/50 border-b border-neutral-200 dark:border-neutral-800">
-                <th className="px-6 py-4 text-xs font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">User</th>
-                <th className="px-6 py-4 text-xs font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">Role</th>
-                <th className="px-6 py-4 text-xs font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">Status</th>
-                <th className="px-6 py-4 text-xs font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
-              {filteredUsers.map(u => (
-                <tr key={u.id} className="hover:bg-neutral-50 dark:hover:bg-neutral-900/50 transition-colors">
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-white font-bold text-xs shrink-0">
-                        {u.fullName.substring(0, 2).toUpperCase()}
-                      </div>
-                      <div>
-                        <div className="font-bold text-sm text-neutral-900 dark:text-white">{u.fullName}</div>
-                        <div className="text-xs text-neutral-500 dark:text-neutral-400">{u.email}</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider
-                      ${u.role === 'superadmin' ? 'bg-amber-500/10 text-amber-600' : 
-                        u.role === 'admin' ? 'bg-primary/10 text-primary' : 
-                        'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300'}`}
-                    >
-                      {u.role}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold
-                      ${u.status === 'Active' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'}`}
-                    >
-                      {u.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      {isSuperAdmin && u.role === 'admin' && (
-                        <button 
-                          onClick={() => { setTaskForm({ ...taskForm, adminId: u.id }); setShowTaskModal(true); }}
-                          className="p-2 text-neutral-400 hover:text-blue-500 transition-colors bg-white dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-lg hover:border-blue-500/50 shadow-sm" 
-                          title="Assign Task"
-                        >
-                          <ClipboardList className="w-4 h-4" />
-                        </button>
-                      )}
-                      
-                      {canEditUser(u.role) ? (
-                        <>
-                          <button 
-                            onClick={() => { 
-                              setEditForm({ 
-                                userId: u.id, 
-                                fullName: u.fullName,
-                                email: u.email,
-                                phone: u.phone || "",
-                                role: u.role,
-                                status: u.status
-                              }); 
-                              setShowEditModal(true); 
-                            }}
-                            className="p-2 text-neutral-400 hover:text-primary transition-colors bg-white dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-lg shadow-sm" 
-                            title="Edit User"
-                          >
-                            <Edit className="w-4 h-4" />
-                          </button>
-                          <button className="p-2 text-neutral-400 hover:text-primary transition-colors bg-white dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-lg hover:border-primary/50 shadow-sm" title="Email User"><Mail className="w-4 h-4" /></button>
-                          <button className="p-2 text-neutral-400 hover:text-red-500 transition-colors bg-white dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-lg hover:border-red-500/50 shadow-sm" title={u.status === 'Active' ? "Suspend User" : "Activate User"}><Ban className="w-4 h-4" /></button>
-                          <button 
-                            onClick={() => {
-                              if (window.confirm(`Are you sure you want to completely delete ${u.fullName}? This action cannot be undone.`)) {
-                                deleteUser(u.id);
-                              }
-                            }}
-                            className="p-2 text-neutral-400 hover:text-red-600 transition-colors bg-white dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-lg hover:border-red-600/50 shadow-sm ml-2" 
-                            title="Delete User"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </>
-                      ) : (
-                        <span className="text-xs font-semibold text-neutral-400 px-2">Secured</span>
-                      )}
-                    </div>
-                  </td>
+          {loading ? (
+            <div className="text-center py-12 text-neutral-500">Loading users...</div>
+          ) : (
+            <table className="w-full text-left border-collapse min-w-[900px]">
+              <thead>
+                <tr className="bg-neutral-50 dark:bg-neutral-900/50 border-b border-neutral-200 dark:border-neutral-800">
+                  <th className="px-6 py-4 text-xs font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">User</th>
+                  <th className="px-6 py-4 text-xs font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">Role</th>
+                  <th className="px-6 py-4 text-xs font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider">Status</th>
+                  <th className="px-6 py-4 text-xs font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider text-right">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-neutral-200 dark:divide-neutral-800">
+                {filteredUsers.map(u => (
+                  <tr key={u._id} className="hover:bg-neutral-50 dark:hover:bg-neutral-900/50 transition-colors">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-white font-bold text-xs shrink-0">
+                          {u.fullName.substring(0, 2).toUpperCase()}
+                        </div>
+                        <div>
+                          <div className="font-bold text-sm text-neutral-900 dark:text-white">{u.fullName}</div>
+                          <div className="text-xs text-neutral-500 dark:text-neutral-400">{u.email}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider
+                        ${u.role === 'superadmin' ? 'bg-amber-500/10 text-amber-600' : 
+                          u.role === 'admin' ? 'bg-primary/10 text-primary' : 
+                          'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300'}`}
+                      >
+                        {u.role}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold
+                        ${u.status === 'Active' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'}`}
+                      >
+                        {u.status}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        {isSuperAdmin && u.role === 'admin' && (
+                          <button 
+                            onClick={() => { setTaskForm({ ...taskForm, assignedTo: u._id }); setShowTaskModal(true); }}
+                            className="p-2 text-neutral-400 hover:text-blue-500 transition-colors bg-white dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-lg hover:border-blue-500/50 shadow-sm" 
+                            title="Assign Task"
+                          >
+                            <ClipboardList className="w-4 h-4" />
+                          </button>
+                        )}
+                        
+                        {canEditUser(u.role) ? (
+                          <>
+                            <button 
+                              onClick={() => { 
+                                setEditForm({ 
+                                  userId: u._id, 
+                                  fullName: u.fullName,
+                                  email: u.email,
+                                  phone: u.phone || "",
+                                  role: u.role,
+                                  status: u.status
+                                }); 
+                                setShowEditModal(true); 
+                              }}
+                              className="p-2 text-neutral-400 hover:text-primary transition-colors bg-white dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-lg shadow-sm" 
+                              title="Edit User"
+                            >
+                              <Edit className="w-4 h-4" />
+                            </button>
+                            <button className="p-2 text-neutral-400 hover:text-primary transition-colors bg-white dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-lg hover:border-primary/50 shadow-sm" title="Email User"><Mail className="w-4 h-4" /></button>
+                            <button className="p-2 text-neutral-400 hover:text-red-500 transition-colors bg-white dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-lg hover:border-red-500/50 shadow-sm" title={u.status === 'Active' ? "Suspend User" : "Activate User"}><Ban className="w-4 h-4" /></button>
+                            <button 
+                              onClick={() => handleDeleteUser(u._id, u.fullName)}
+                              className="p-2 text-neutral-400 hover:text-red-600 transition-colors bg-white dark:bg-neutral-950 border border-neutral-200 dark:border-neutral-800 rounded-lg hover:border-red-600/50 shadow-sm ml-2" 
+                              title="Delete User"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </>
+                        ) : (
+                          <span className="text-xs font-semibold text-neutral-400 px-2">Secured</span>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
 
@@ -217,7 +267,7 @@ export default function AdminUsers() {
                 </form>
               ) : (
                 <div className="text-center py-4">
-                  <p className="text-sm text-neutral-500 mb-4">Invitation sent! For this demo, copy the link below to simulate the new admin setting their password.</p>
+                  <p className="text-sm text-neutral-500 mb-4">Invitation sent! The new admin can set up their password using the link below:</p>
                   <a href={mockInviteLink} target="_blank" rel="noreferrer" className="text-primary font-bold text-sm bg-primary/10 px-4 py-2 rounded-lg break-all inline-block hover:underline">{mockInviteLink}</a>
                 </div>
               )}

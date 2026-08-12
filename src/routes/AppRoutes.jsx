@@ -10,6 +10,7 @@ import AboutPage from "../pages/AboutPage";
 import ContactPage from "../pages/ContactPage";
 import TermsPage from "../pages/TermsPage";
 import DashboardPage from "../pages/DashboardPage";
+import SettingsPage from "../pages/SettingsPage";
 import AdminDashboard from "../pages/admin/AdminDashboard";
 import AdminCampaigns from "../pages/admin/AdminCampaigns";
 import AdminUsers from "../pages/admin/AdminUsers";
@@ -30,6 +31,7 @@ const AppRoutes = ({ darkMode, toggleDark }) => (
       <Route path="/terms" element={<TermsPage />} />
       <Route element={<ProtectedRoute allowedRoles={['donor']} />}>
         <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/settings" element={<SettingsPage />} />
       </Route>
       <Route path="/setup-password/:userId" element={<SetupPassword />} />
       <Route path="*" element={<NotFoundPage />} />

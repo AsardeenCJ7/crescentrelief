@@ -235,12 +235,20 @@ const Navbar = ({ darkMode, toggleDark }) => {
               {isAuthenticated ? (
                 <UserProfileDropdown user={user} onLogout={logout} />
               ) : (
-                <button
-                  onClick={() => setShowLoginModal(true)}
-                  className="hidden lg:block text-sm font-semibold text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-white transition-colors"
-                >
-                  Sign In
-                </button>
+                <div className="hidden lg:flex items-center gap-3">
+                  <button
+                    onClick={() => setShowLoginModal(true)}
+                    className="text-sm font-semibold text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-white transition-colors"
+                  >
+                    Sign In
+                  </button>
+                  <button
+                    onClick={() => setShowRegisterModal(true)}
+                    className="text-sm font-bold text-primary dark:text-primary-400 hover:text-primary-600 dark:hover:text-primary-300 transition-colors px-3 py-1.5 rounded-full hover:bg-primary/5 dark:hover:bg-primary/10"
+                  >
+                    Register
+                  </button>
+                </div>
               )}
 
               <Link to="/campaigns" className="hidden sm:inline-flex btn-accent text-sm px-5 py-2.5 rounded-full font-heading font-bold transition-all hover:-translate-y-0.5 hover:shadow-lg">
@@ -351,14 +359,22 @@ const Navbar = ({ darkMode, toggleDark }) => {
                     Sign Out
                   </button>
                 ) : (
-                  <button
-                    onClick={() => { setMobileOpen(false); setShowLoginModal(true); }}
-                    className="btn-secondary w-full rounded-full justify-center text-sm"
-                  >
-                    Sign In
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => { setMobileOpen(false); setShowLoginModal(true); }}
+                      className="btn-secondary flex-1 rounded-full justify-center text-sm"
+                    >
+                      Sign In
+                    </button>
+                    <button
+                      onClick={() => { setMobileOpen(false); setShowRegisterModal(true); }}
+                      className="btn-accent flex-1 rounded-full justify-center text-sm font-bold bg-primary text-white"
+                    >
+                      Register
+                    </button>
+                  </div>
                 )}
-                <Link to="/campaigns" onClick={() => setMobileOpen(false)} className="btn-accent w-full rounded-full justify-center text-sm font-bold text-center block py-3">
+                <Link to="/campaigns" onClick={() => setMobileOpen(false)} className="btn-accent w-full rounded-full justify-center text-sm font-bold text-center block py-3 mt-3">
                   Donate Now
                 </Link>
               </div>

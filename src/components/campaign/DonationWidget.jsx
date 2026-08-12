@@ -1,14 +1,19 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { formatCurrency, getDaysLeftLabel } from "../../utils/formatters";
 import ProgressBar from "../common/ProgressBar";
 import { useAuth } from "../../context/AuthContext";
+import { campaignService } from "../../services/api";
+import { Loader2 } from "lucide-react";
 
 const DonationWidget = ({ campaign }) => {
   const [amount, setAmount] = useState(50);
   const [customAmount, setCustomAmount] = useState("");
   const [type, setType] = useState("one-time");
+  const [loading, setLoading] = useState(false);
   
-  const { isAuthenticated, setShowLoginModal } = useAuth();
+  const { isAuthenticated, setShowLoginModal, user } = useAuth();
+  const navigate = useNavigate();
 
   const percentFunded = Math.round((campaign.raised / campaign.goal) * 100);
   const predefinedAmounts = [10, 25, 50, 100];
@@ -19,13 +24,37 @@ const DonationWidget = ({ campaign }) => {
     if (val) setAmount(Number(val));
   };
   
-  const handleCheckout = () => {
+  const handleCheckout = async () => {
     if (!isAuthenticated) {
       setShowLoginModal(true);
       return;
     }
-    // Proceed with donation logic
-    alert(`Processing ${type} donation of £${amount}`);
+    
+    if (amount < 1) {
+      alert("Minimum donation amount is £1.");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const payload = {
+        amount,
+        isAnonymous: false,
+        paymentMethod: "card",
+        giftAid: { enabled: user?.preferences?.ukGiftAid || false }
+      };
+
+      const res = await campaignService.donate(campaign._id || campaign.id, payload);
+      if (res.success) {
+        // Redirect to dashboard to see their updated stats and donation history
+        navigate("/dashboard");
+      }
+    } catch (error) {
+      console.error("Donation failed:", error);
+      alert(error.response?.data?.message || "Donation failed. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -33,10 +62,10 @@ const DonationWidget = ({ campaign }) => {
       {/* Progress */}
       <div className="mb-6">
         <div className="flex justify-between items-end mb-2">
-          <span className="font-heading font-extrabold text-2xl text-neutral-900 dark:text-white">{formatCurrency(campaign.raised)}</span>
+          <span className="font-heading font-extrabold text-2xl text-neutral-900 dark:text-white">£{campaign.raised.toLocaleString()}</span>
           <span className="text-sm font-semibold text-primary dark:text-primary-300">{percentFunded}%</span>
         </div>
-        <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-3">raised of {formatCurrency(campaign.goal)} goal</p>
+        <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-3">raised of £{campaign.goal.toLocaleString()} goal</p>
         <ProgressBar raised={campaign.raised} goal={campaign.goal} showPercent={false} />
         <div className="flex justify-between items-center mt-3 pt-3 border-t border-border-light dark:border-neutral-800">
           <div className="flex items-center gap-1.5">
@@ -101,8 +130,16 @@ const DonationWidget = ({ campaign }) => {
         </div>
 
         {/* Checkout Button */}
-        <button onClick={handleCheckout} className="btn-accent w-full py-4 text-base rounded-2xl shadow-button hover:shadow-lg">
-          Donate {amount > 0 ? `£${amount}` : ""}
+        <button 
+          onClick={handleCheckout} 
+          disabled={loading}
+          className="btn-accent w-full py-4 text-base rounded-2xl shadow-button hover:shadow-lg flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+        >
+          {loading ? (
+            <><Loader2 className="w-5 h-5 animate-spin" /> Processing...</>
+          ) : (
+            `Donate ${amount > 0 ? `£${amount}` : ""}`
+          )}
         </button>
 
         <p className="text-center text-xs text-neutral-400 dark:text-neutral-500 mt-4 flex items-center justify-center gap-1.5">
