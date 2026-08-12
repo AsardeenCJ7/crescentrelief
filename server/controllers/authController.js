@@ -164,6 +164,49 @@ export const verifyOtp = asyncHandler(async (req, res) => {
     ipAddress: req.ip,
   });
 
+  // Send welcome email
+  try {
+    await sendEmail({
+      email: user.email,
+      subject: "Welcome to Crescent Relief! 🌙",
+      message: `Welcome to Crescent Relief, ${user.fullName}! Your email has been verified successfully. You are now a verified donor.`,
+      html: `
+        <div style="font-family: 'Segoe UI', sans-serif; max-width: 600px; margin: auto; padding: 0; border: 1px solid #e5e7eb; border-radius: 16px; overflow: hidden;">
+          <div style="background: linear-gradient(135deg, #0d9488, #0ea5e9); padding: 40px 30px; text-align: center;">
+            <h1 style="color: white; margin: 0; font-size: 28px;">Welcome to Crescent Relief! 🌙</h1>
+            <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0; font-size: 16px;">Your journey of making a difference starts now</p>
+          </div>
+          <div style="padding: 30px;">
+            <p style="font-size: 16px; color: #374151; margin: 0 0 15px;">Dear <strong>${user.fullName}</strong>,</p>
+            <p style="font-size: 15px; color: #4b5563; line-height: 1.6; margin: 0 0 20px;">
+              Thank you for joining Crescent Relief! Your email has been <strong style="color: #0d9488;">successfully verified</strong> and your donor account is now active.
+            </p>
+            <div style="background: #f0fdfa; border-left: 4px solid #0d9488; padding: 15px 20px; border-radius: 0 8px 8px 0; margin: 20px 0;">
+              <p style="font-size: 14px; color: #0d9488; font-weight: 600; margin: 0 0 8px;">What you can do now:</p>
+              <ul style="font-size: 14px; color: #4b5563; margin: 0; padding-left: 18px; line-height: 1.8;">
+                <li>Browse and support active campaigns</li>
+                <li>Track your donation history</li>
+                <li>See the real-world impact of your contributions</li>
+                <li>Connect with our volunteer community</li>
+              </ul>
+            </div>
+            <p style="font-size: 14px; color: #6b7280; line-height: 1.6; margin: 20px 0 0;">
+              Together, we can make a lasting difference in the lives of those who need it most.
+            </p>
+            <p style="font-size: 14px; color: #6b7280; margin: 25px 0 0;">
+              With gratitude,<br/><strong style="color: #374151;">The Crescent Relief Team</strong>
+            </p>
+          </div>
+          <div style="background: #f9fafb; padding: 15px 30px; text-align: center; border-top: 1px solid #e5e7eb;">
+            <p style="font-size: 12px; color: #9ca3af; margin: 0;">© ${new Date().getFullYear()} Crescent Relief. All rights reserved.</p>
+          </div>
+        </div>
+      `
+    });
+  } catch (emailError) {
+    console.error("Error sending welcome email:", emailError);
+  }
+
   sendTokenResponse(user, 200, res);
 });
 
