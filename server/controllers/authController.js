@@ -52,8 +52,10 @@ export const register = asyncHandler(async (req, res) => {
   const { fullName, email, password, phone, referralCode } = req.body;
 
   // Check if email already exists
-  const existingUser = await User.findOne({ email });
-  if (existingUser) throw new AppError("Email already registered.", 409);
+  let user = await User.findOne({ email }).select("+emailVerificationToken +emailVerificationExpires");
+  
+  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+  console.log(`[Crescent Relief OTP] code for ${email} is: ${otp}`);
 
   // Find referrer if code provided
   let referrer = null;
@@ -61,29 +63,43 @@ export const register = asyncHandler(async (req, res) => {
     referrer = await User.findOne({ referralCode });
   }
 
-  const otp = Math.floor(100000 + Math.random() * 900000).toString();
-  console.log(`[Crescent Relief OTP] code for ${email} is: ${otp}`);
+  if (user) {
+    if (user.status !== "Unverified" || user.emailVerified) {
+      throw new AppError("Email already registered. Please sign in.", 409);
+    }
+    // If Unverified, update their details and send a new OTP
+    user.fullName = fullName;
+    user.password = password; // Will be hashed by pre-save hook
+    if (phone) user.phone = phone;
+    user.emailVerificationToken = otp;
+    user.emailVerificationExpires = Date.now() + 10 * 60 * 1000;
+    if (referrer && !user.referredBy) {
+      user.referredBy = referrer._id;
+    }
+    await user.save();
+  } else {
+    // Create new user
+    user = await User.create({
+      fullName,
+      email,
+      password,
+      phone,
+      role: "donor",
+      status: "Unverified",
+      emailVerified: false,
+      emailVerificationToken: otp,
+      emailVerificationExpires: Date.now() + 10 * 60 * 1000, // 10 mins
+      authProvider: "local",
+      referredBy: referrer?._id || undefined,
+      badge: { tier: "Bronze" },
+    });
 
-  const user = await User.create({
-    fullName,
-    email,
-    password,
-    phone,
-    role: "donor",
-    status: "Unverified",
-    emailVerified: false,
-    emailVerificationToken: otp,
-    emailVerificationExpires: Date.now() + 10 * 60 * 1000, // 10 mins
-    authProvider: "local",
-    referredBy: referrer?._id || undefined,
-    badge: { tier: "Bronze" },
-  });
-
-  // Increment referrer's count
-  if (referrer) {
-    referrer.referralCount += 1;
-    referrer.updateBadgeTier();
-    await referrer.save({ validateBeforeSave: false });
+    // Increment referrer's count only on new user creation
+    if (referrer) {
+      referrer.referralCount += 1;
+      referrer.updateBadgeTier();
+      await referrer.save({ validateBeforeSave: false });
+    }
   }
 
   await AuditLog.create({
@@ -94,26 +110,22 @@ export const register = asyncHandler(async (req, res) => {
     ipAddress: req.ip,
   });
 
-  // Try to send email
-  try {
-    await sendEmail({
-      email: user.email,
-      subject: "Crescent Relief - Verify Your Email",
-      message: `Welcome to Crescent Relief! Your verification code is: ${otp}. It will expire in 10 minutes.`,
-      html: `
-        <div style="font-family: sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
-          <h2 style="color: #0d9488; text-align: center;">Welcome to Crescent Relief!</h2>
-          <p>Thank you for registering. To verify your email address, please enter the following 6-digit verification code:</p>
-          <div style="background: #f0fdfa; border: 2px dashed #0d9488; padding: 15px; text-align: center; font-size: 24px; font-weight: bold; letter-spacing: 5px; color: #0d9488; margin: 20px 0; border-radius: 8px;">
-            ${otp}
-          </div>
-          <p style="font-size: 12px; color: #666; text-align: center;">This code is valid for 10 minutes. If you did not register for an account, you can safely ignore this email.</p>
+  // Send email in background to prevent timeout
+  sendEmail({
+    email: user.email,
+    subject: "Crescent Relief - Verify Your Email",
+    message: `Welcome to Crescent Relief! Your verification code is: ${otp}. It will expire in 10 minutes.`,
+    html: `
+      <div style="font-family: sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+        <h2 style="color: #0d9488; text-align: center;">Welcome to Crescent Relief!</h2>
+        <p>Thank you for registering. To verify your email address, please enter the following 6-digit verification code:</p>
+        <div style="background: #f0fdfa; border: 2px dashed #0d9488; padding: 15px; text-align: center; font-size: 24px; font-weight: bold; letter-spacing: 5px; color: #0d9488; margin: 20px 0; border-radius: 8px;">
+          ${otp}
         </div>
-      `
-    });
-  } catch (error) {
-    console.error("Error sending registration verification email via SMTP:", error);
-  }
+        <p style="font-size: 12px; color: #666; text-align: center;">This code is valid for 10 minutes. If you did not register for an account, you can safely ignore this email.</p>
+      </div>
+    `
+  }).catch(error => console.error("Error sending registration verification email via SMTP:", error));
 
   res.status(201).json({
     success: true,
@@ -136,8 +148,12 @@ export const verifyOtp = asyncHandler(async (req, res) => {
     throw new AppError("User not found.", 404);
   }
 
-  if (user.status !== "Unverified") {
-    throw new AppError("Account is already verified.", 400);
+  if (user.emailVerified || user.status === "Active") {
+    throw new AppError("This email is already verified. Please sign in directly.", 400);
+  }
+
+  if (user.status === "Suspended") {
+    throw new AppError("Account suspended. Contact support@crescentrelief.org.", 403);
   }
 
   if (user.emailVerificationToken !== otp) {
@@ -164,48 +180,44 @@ export const verifyOtp = asyncHandler(async (req, res) => {
     ipAddress: req.ip,
   });
 
-  // Send welcome email
-  try {
-    await sendEmail({
-      email: user.email,
-      subject: "Welcome to Crescent Relief! 🌙",
-      message: `Welcome to Crescent Relief, ${user.fullName}! Your email has been verified successfully. You are now a verified donor.`,
-      html: `
-        <div style="font-family: 'Segoe UI', sans-serif; max-width: 600px; margin: auto; padding: 0; border: 1px solid #e5e7eb; border-radius: 16px; overflow: hidden;">
-          <div style="background: linear-gradient(135deg, #0d9488, #0ea5e9); padding: 40px 30px; text-align: center;">
-            <h1 style="color: white; margin: 0; font-size: 28px;">Welcome to Crescent Relief! 🌙</h1>
-            <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0; font-size: 16px;">Your journey of making a difference starts now</p>
-          </div>
-          <div style="padding: 30px;">
-            <p style="font-size: 16px; color: #374151; margin: 0 0 15px;">Dear <strong>${user.fullName}</strong>,</p>
-            <p style="font-size: 15px; color: #4b5563; line-height: 1.6; margin: 0 0 20px;">
-              Thank you for joining Crescent Relief! Your email has been <strong style="color: #0d9488;">successfully verified</strong> and your donor account is now active.
-            </p>
-            <div style="background: #f0fdfa; border-left: 4px solid #0d9488; padding: 15px 20px; border-radius: 0 8px 8px 0; margin: 20px 0;">
-              <p style="font-size: 14px; color: #0d9488; font-weight: 600; margin: 0 0 8px;">What you can do now:</p>
-              <ul style="font-size: 14px; color: #4b5563; margin: 0; padding-left: 18px; line-height: 1.8;">
-                <li>Browse and support active campaigns</li>
-                <li>Track your donation history</li>
-                <li>See the real-world impact of your contributions</li>
-                <li>Connect with our volunteer community</li>
-              </ul>
-            </div>
-            <p style="font-size: 14px; color: #6b7280; line-height: 1.6; margin: 20px 0 0;">
-              Together, we can make a lasting difference in the lives of those who need it most.
-            </p>
-            <p style="font-size: 14px; color: #6b7280; margin: 25px 0 0;">
-              With gratitude,<br/><strong style="color: #374151;">The Crescent Relief Team</strong>
-            </p>
-          </div>
-          <div style="background: #f9fafb; padding: 15px 30px; text-align: center; border-top: 1px solid #e5e7eb;">
-            <p style="font-size: 12px; color: #9ca3af; margin: 0;">© ${new Date().getFullYear()} Crescent Relief. All rights reserved.</p>
-          </div>
+  // Send welcome email in background
+  sendEmail({
+    email: user.email,
+    subject: "Welcome to Crescent Relief! 🌙",
+    message: `Welcome to Crescent Relief, ${user.fullName}! Your email has been verified successfully. You are now a verified donor.`,
+    html: `
+      <div style="font-family: 'Segoe UI', sans-serif; max-width: 600px; margin: auto; padding: 0; border: 1px solid #e5e7eb; border-radius: 16px; overflow: hidden;">
+        <div style="background: linear-gradient(135deg, #0d9488, #0ea5e9); padding: 40px 30px; text-align: center;">
+          <h1 style="color: white; margin: 0; font-size: 28px;">Welcome to Crescent Relief! 🌙</h1>
+          <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0; font-size: 16px;">Your journey of making a difference starts now</p>
         </div>
-      `
-    });
-  } catch (emailError) {
-    console.error("Error sending welcome email:", emailError);
-  }
+        <div style="padding: 30px;">
+          <p style="font-size: 16px; color: #374151; margin: 0 0 15px;">Dear <strong>${user.fullName}</strong>,</p>
+          <p style="font-size: 15px; color: #4b5563; line-height: 1.6; margin: 0 0 20px;">
+            Thank you for joining Crescent Relief! Your email has been <strong style="color: #0d9488;">successfully verified</strong> and your donor account is now active.
+          </p>
+          <div style="background: #f0fdfa; border-left: 4px solid #0d9488; padding: 15px 20px; border-radius: 0 8px 8px 0; margin: 20px 0;">
+            <p style="font-size: 14px; color: #0d9488; font-weight: 600; margin: 0 0 8px;">What you can do now:</p>
+            <ul style="font-size: 14px; color: #4b5563; margin: 0; padding-left: 18px; line-height: 1.8;">
+              <li>Browse and support active campaigns</li>
+              <li>Track your donation history</li>
+              <li>See the real-world impact of your contributions</li>
+              <li>Connect with our volunteer community</li>
+            </ul>
+          </div>
+          <p style="font-size: 14px; color: #6b7280; line-height: 1.6; margin: 20px 0 0;">
+            Together, we can make a lasting difference in the lives of those who need it most.
+          </p>
+          <p style="font-size: 14px; color: #6b7280; margin: 25px 0 0;">
+            With gratitude,<br/><strong style="color: #374151;">The Crescent Relief Team</strong>
+          </p>
+        </div>
+        <div style="background: #f9fafb; padding: 15px 30px; text-align: center; border-top: 1px solid #e5e7eb;">
+          <p style="font-size: 12px; color: #9ca3af; margin: 0;">© ${new Date().getFullYear()} Crescent Relief. All rights reserved.</p>
+        </div>
+      </div>
+    `
+  }).catch(emailError => console.error("Error sending welcome email:", emailError));
 
   sendTokenResponse(user, 200, res);
 });
@@ -218,8 +230,8 @@ export const resendOtp = asyncHandler(async (req, res) => {
   const user = await User.findOne({ email }).select("+emailVerificationToken +emailVerificationExpires");
   if (!user) throw new AppError("User not found.", 404);
 
-  if (user.status !== "Unverified") {
-    throw new AppError("Account is already verified.", 400);
+  if (user.emailVerified || user.status !== "Unverified") {
+    throw new AppError("This account is already verified. Please sign in directly.", 400);
   }
 
   const otp = Math.floor(100000 + Math.random() * 900000).toString();
@@ -229,26 +241,22 @@ export const resendOtp = asyncHandler(async (req, res) => {
   user.emailVerificationExpires = Date.now() + 10 * 60 * 1000;
   await user.save();
 
-  // Try to send email
-  try {
-    await sendEmail({
-      email: user.email,
-      subject: "Crescent Relief - Verify Your Email",
-      message: `Your new verification code is: ${otp}. It will expire in 10 minutes.`,
-      html: `
-        <div style="font-family: sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
-          <h2 style="color: #0d9488; text-align: center;">New Verification Code</h2>
-          <p>You requested a new verification code. Please enter the following 6-digit code to verify your email address:</p>
-          <div style="background: #f0fdfa; border: 2px dashed #0d9488; padding: 15px; text-align: center; font-size: 24px; font-weight: bold; letter-spacing: 5px; color: #0d9488; margin: 20px 0; border-radius: 8px;">
-            ${otp}
-          </div>
-          <p style="font-size: 12px; color: #666; text-align: center;">This code is valid for 10 minutes. If you did not request this, please secure your account.</p>
+  // Send email in background
+  sendEmail({
+    email: user.email,
+    subject: "Crescent Relief - Verify Your Email",
+    message: `Your new verification code is: ${otp}. It will expire in 10 minutes.`,
+    html: `
+      <div style="font-family: sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+        <h2 style="color: #0d9488; text-align: center;">New Verification Code</h2>
+        <p>You requested a new verification code. Please enter the following 6-digit code to verify your email address:</p>
+        <div style="background: #f0fdfa; border: 2px dashed #0d9488; padding: 15px; text-align: center; font-size: 24px; font-weight: bold; letter-spacing: 5px; color: #0d9488; margin: 20px 0; border-radius: 8px;">
+          ${otp}
         </div>
-      `
-    });
-  } catch (error) {
-    console.error("Error sending resend verification email via SMTP:", error);
-  }
+        <p style="font-size: 12px; color: #666; text-align: center;">This code is valid for 10 minutes. If you did not request this, please secure your account.</p>
+      </div>
+    `
+  }).catch(error => console.error("Error sending resend verification email via SMTP:", error));
 
   res.status(200).json({
     success: true,
@@ -273,6 +281,13 @@ export const login = asyncHandler(async (req, res) => {
 
   if (user.authProvider === "google") {
     throw new AppError("Please sign in with Google.", 400);
+  }
+
+  if (user.status === "Unverified") {
+    throw new AppError(
+      "EMAIL_NOT_VERIFIED",
+      403
+    );
   }
 
   const isMatch = await user.comparePassword(password);
@@ -356,28 +371,24 @@ export const forgotPassword = asyncHandler(async (req, res) => {
 
   const resetUrl = `${process.env.CLIENT_URL}/reset-password/${resetToken}`;
 
-  // Try to send email
-  try {
-    await sendEmail({
-      email: user.email,
-      subject: "Crescent Relief - Password Reset Request",
-      message: `You requested a password reset. Please click on the link to reset your password: ${resetUrl}`,
-      html: `
-        <div style="font-family: sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
-          <h2 style="color: #0d9488; text-align: center;">Password Reset Request</h2>
-          <p>We received a request to reset the password associated with your Crescent Relief account. Click the button below to reset your password:</p>
-          <div style="text-align: center; margin: 30px 0;">
-            <a href="${resetUrl}" style="background-color: #0d9488; color: white; padding: 12px 25px; text-decoration: none; font-weight: bold; border-radius: 5px; display: inline-block;">Reset Password</a>
-          </div>
-          <p>Or copy and paste this link into your browser:</p>
-          <p style="word-break: break-all; color: #0d9488; font-size: 14px;">${resetUrl}</p>
-          <p style="font-size: 12px; color: #666;">This link is valid for 15 minutes. If you did not request a password reset, no further action is required.</p>
+  // Send email in background
+  sendEmail({
+    email: user.email,
+    subject: "Crescent Relief - Password Reset Request",
+    message: `You requested a password reset. Please click on the link to reset your password: ${resetUrl}`,
+    html: `
+      <div style="font-family: sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+        <h2 style="color: #0d9488; text-align: center;">Password Reset Request</h2>
+        <p>We received a request to reset the password associated with your Crescent Relief account. Click the button below to reset your password:</p>
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${resetUrl}" style="background-color: #0d9488; color: white; padding: 12px 25px; text-decoration: none; font-weight: bold; border-radius: 5px; display: inline-block;">Reset Password</a>
         </div>
-      `
-    });
-  } catch (error) {
-    console.error("Error sending password reset email via SMTP:", error);
-  }
+        <p>Or copy and paste this link into your browser:</p>
+        <p style="word-break: break-all; color: #0d9488; font-size: 14px;">${resetUrl}</p>
+        <p style="font-size: 12px; color: #666;">This link is valid for 15 minutes. If you did not request a password reset, no further action is required.</p>
+      </div>
+    `
+  }).catch(error => console.error("Error sending password reset email via SMTP:", error));
 
   if (process.env.NODE_ENV === "development") {
     return res.status(200).json({
@@ -447,7 +458,7 @@ export const setupPassword = asyncHandler(async (req, res) => {
 
 // ─── @POST /api/auth/google ────────────────────────────────────────────────
 export const googleLogin = asyncHandler(async (req, res) => {
-  const { email, fullName, googleId, avatar } = req.body;
+  const { email, fullName, googleId, avatar, referralCode } = req.body;
 
   if (!email || !googleId) throw new AppError("Email and Google ID are required.", 400);
 
@@ -461,6 +472,11 @@ export const googleLogin = asyncHandler(async (req, res) => {
       await user.save({ validateBeforeSave: false });
     }
   } else {
+    let referrer = null;
+    if (referralCode) {
+      referrer = await User.findOne({ referralCode });
+    }
+
     user = await User.create({
       fullName: fullName || "Google User",
       email,
@@ -470,8 +486,15 @@ export const googleLogin = asyncHandler(async (req, res) => {
       status: "Active",
       emailVerified: true,
       avatar,
+      referredBy: referrer?._id || undefined,
       badge: { tier: "Bronze" }
     });
+
+    if (referrer) {
+      referrer.referralCount += 1;
+      referrer.updateBadgeTier();
+      await referrer.save({ validateBeforeSave: false });
+    }
 
     await AuditLog.create({
       actorEmail: email,

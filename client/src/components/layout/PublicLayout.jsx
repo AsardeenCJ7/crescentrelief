@@ -1,8 +1,6 @@
 import { Outlet } from "react-router-dom";
 import Navbar from "./Navbar";
 import Footer from "./Footer";
-import FloatingAssistant from "../ui/FloatingAssistant";
-
 const PublicLayout = ({ darkMode, toggleDark }) => {
   return (
     <>
@@ -11,7 +9,6 @@ const PublicLayout = ({ darkMode, toggleDark }) => {
         <Outlet />
       </div>
       <Footer />
-      <FloatingAssistant />
     </>
   );
 };

@@ -7,17 +7,27 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Dependencies
 node_modules
+client/node_modules
+server/node_modules
+
+# Build outputs
 dist
+client/dist
 dist-ssr
-*.local
 
 # Environment variables - NEVER commit these
 .env
-.env.local
-.env.production
-.env.development
+*.local
+client/.env
+client/.env.local
+client/.env.production
+client/.env.development
 server/.env
+server/.env.local
+server/.env.production
+server/.env.development
 
 # Uploaded files
 server/uploads/*
@@ -33,13 +43,3 @@ server/uploads/*
 *.njsproj
 *.sln
 *.sw?
-
-server/.env
-
-server/.env
-
-node_modules/
-
-dist/
-
-.env

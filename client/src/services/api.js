@@ -51,12 +51,16 @@ export const userService = {
   updateProfile: (payload) => api.put("/users/profile", payload),
   changePassword: (payload) => api.put("/users/change-password", payload),
   getFavourites: () => api.get("/users/favourites"),
+  addFavourite: (campaignId) => api.post(`/users/favourites/${campaignId}`),
+  removeFavourite: (campaignId) => api.delete(`/users/favourites/${campaignId}`),
 };
 
 export const donationService = {
   getAll: (params) => api.get("/donations", { params }),
   getStats: (params) => api.get("/donations/stats", { params }),
+  getActivity: (params) => api.get("/donations/activity", { params }),
   getMyDonations: () => api.get("/donations/my"),
+  createPaymentIntent: (payload) => api.post("/donations/create-payment-intent", payload),
 };
 
 export const taskService = {

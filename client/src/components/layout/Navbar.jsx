@@ -73,7 +73,7 @@ const UserProfileDropdown = ({ user, onLogout }) => {
         className="flex items-center gap-2 pl-1 pr-3 py-1 rounded-full border border-border-light dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
       >
         {user.avatar ? (
-          <img src={user.avatar} alt={user.fullName} className="w-8 h-8 rounded-full object-cover" />
+          <img src={user.avatar} alt={user.fullName} referrerPolicy="no-referrer" className="w-8 h-8 rounded-full object-cover" />
         ) : (
           <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-white font-bold text-xs">
             {initials}
@@ -100,7 +100,7 @@ const UserProfileDropdown = ({ user, onLogout }) => {
             <div className="p-4 border-b border-border-light dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-900/50">
               <div className="flex items-center gap-3">
                 {user.avatar ? (
-                  <img src={user.avatar} alt={user.fullName} className="w-10 h-10 rounded-full object-cover" />
+                  <img src={user.avatar} alt={user.fullName} referrerPolicy="no-referrer" className="w-10 h-10 rounded-full object-cover" />
                 ) : (
                   <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-white font-bold text-sm">
                     {initials}
@@ -300,9 +300,13 @@ const Navbar = ({ darkMode, toggleDark }) => {
               {isAuthenticated && user && (
                 <div className="p-5 border-b border-border-light dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-800/50">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-white font-bold text-sm">
-                      {user.fullName.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)}
-                    </div>
+                    {user.avatar ? (
+                      <img src={user.avatar} alt={user.fullName} referrerPolicy="no-referrer" className="w-10 h-10 rounded-full object-cover" />
+                    ) : (
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-white font-bold text-sm">
+                        {user.fullName.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)}
+                      </div>
+                    )}
                     <div>
                       <p className="font-heading font-bold text-sm text-neutral-900 dark:text-white">{user.fullName}</p>
                       <p className="text-xs text-neutral-500 dark:text-neutral-400">{user.email}</p>

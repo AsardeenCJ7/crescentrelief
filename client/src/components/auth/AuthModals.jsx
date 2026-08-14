@@ -21,11 +21,14 @@ export const LoginModal = ({ isOpen, onClose, onSwitchToRegister }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [googleLoading, setGoogleLoading] = useState(false);
-  const { login, googleAuth } = useAuth();
+  const [otpInput, setOtpInput] = useState("");
+  const [otpLoading, setOtpLoading] = useState(false);
+  const { login, googleAuth, verifyOtp, resendOtp } = useAuth();
   const navigate = useNavigate();
 
-  const [step, setStep] = useState(1); // 1 = login, 2 = success
+  const [step, setStep] = useState(1); // 1 = login, 2 = success, 3 = verify-otp
   const [loading, setLoading] = useState(false);
+  const [unverifiedEmail, setUnverifiedEmail] = useState("");
 
   useEffect(() => {
     if (isOpen) {
@@ -34,6 +37,7 @@ export const LoginModal = ({ isOpen, onClose, onSwitchToRegister }) => {
       setPassword("");
       setShowPassword(false);
       setError("");
+      setUnverifiedEmail("");
     }
   }, [isOpen]);
 
@@ -96,7 +100,15 @@ export const LoginModal = ({ isOpen, onClose, onSwitchToRegister }) => {
       }, 1500);
     } catch (err) {
       setLoading(false);
-      setError(err.message || "Login failed");
+      if (err.message === "EMAIL_NOT_VERIFIED") {
+        // Switch to OTP verification mode for this email
+        setUnverifiedEmail(email);
+        setStep(3);
+        // Trigger resend OTP automatically
+        try { await resendOtp(email); } catch (_) { /* ignore */ }
+      } else {
+        setError(err.message || "Login failed");
+      }
     }
   };
 
@@ -126,7 +138,9 @@ export const LoginModal = ({ isOpen, onClose, onSwitchToRegister }) => {
               <div className="w-8 h-8 bg-gradient-to-br from-primary to-secondary rounded-lg flex items-center justify-center">
                 <span className="material-symbols-outlined text-white text-[18px]">cruelty_free</span>
               </div>
-              <span className="font-heading font-extrabold text-lg text-neutral-900 dark:text-white">Sign In</span>
+              <span className="font-heading font-extrabold text-lg text-neutral-900 dark:text-white">
+                {step === 3 ? "Verify Email" : "Sign In"}
+              </span>
             </div>
             <button
               onClick={onClose}
@@ -153,6 +167,82 @@ export const LoginModal = ({ isOpen, onClose, onSwitchToRegister }) => {
                   <div className="h-full bg-gradient-to-r from-primary to-secondary rounded-full animate-[progress_1.5s_linear_forwards]" style={{ width: "100%", animation: "progress 1.5s linear forwards" }} />
                 </div>
                 <style>{`@keyframes progress { from { width: 0% } to { width: 100% } }`}</style>
+              </div>
+            ) : step === 3 ? (
+              /* ── STEP 3: Unverified email - OTP verification ── */
+              <div className="space-y-5">
+                <div className="text-center">
+                  <div className="w-16 h-16 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <span className="material-symbols-outlined text-amber-600 dark:text-amber-400 text-[32px]">mark_email_read</span>
+                  </div>
+                  <h3 className="font-heading font-bold text-xl text-neutral-900 dark:text-white mb-2">One last step!</h3>
+                  <p className="text-neutral-500 dark:text-neutral-400 text-sm">
+                    Your account was registered but not yet verified. We've sent a verification code to{" "}
+                    <span className="font-semibold text-neutral-700 dark:text-neutral-300">{unverifiedEmail}</span>
+                  </p>
+                </div>
+                {error && (
+                  <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-600 text-sm font-medium flex items-center gap-2">
+                    <span className="material-symbols-outlined text-[18px]">error</span>
+                    {error}
+                  </div>
+                )}
+                <div>
+                  <label className="block text-sm font-semibold text-neutral-700 dark:text-neutral-300 mb-1.5 text-center">Enter 6-digit Verification Code</label>
+                  <input
+                    type="text"
+                    value={otpInput}
+                    onChange={(e) => setOtpInput(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    placeholder="123456"
+                    autoFocus
+                    className="w-full text-center tracking-[0.5em] text-2xl py-3 rounded-xl border-2 border-border-light dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white font-bold focus:outline-none focus:border-primary/50 transition-all font-mono"
+                  />
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => { setStep(1); setOtpInput(""); setError(""); }}
+                    className="w-1/3 py-3 rounded-xl font-bold text-sm bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 transition-all"
+                  >
+                    Back
+                  </button>
+                  <button
+                    type="button"
+                    disabled={otpLoading || otpInput.length < 6}
+                    onClick={async () => {
+                      setError("");
+                      setOtpLoading(true);
+                      try {
+                        const user = await verifyOtp(unverifiedEmail, otpInput);
+                        setStep(2);
+                        setTimeout(() => {
+                          navigate(user.role === "admin" || user.role === "superadmin" ? "/admin" : "/dashboard");
+                          onClose();
+                        }, 1500);
+                      } catch (err) {
+                        setError(err.message || "Invalid code. Please try again.");
+                      } finally {
+                        setOtpLoading(false);
+                      }
+                    }}
+                    className="w-2/3 btn-accent py-3 rounded-xl font-heading font-bold text-base shadow-button hover:shadow-lg transition-all hover:-translate-y-0.5 disabled:opacity-60 flex items-center justify-center gap-2"
+                  >
+                    {otpLoading ? (
+                      <><span className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Verifying...</>
+                    ) : (
+                      "Verify & Sign In"
+                    )}
+                  </button>
+                </div>
+                <p className="text-center text-xs text-neutral-500 dark:text-neutral-400">
+                  Didn't receive a code?{" "}
+                  <button
+                    onClick={async () => { try { await resendOtp(unverifiedEmail); } catch (_) {} }}
+                    className="text-primary font-semibold hover:underline"
+                  >
+                    Resend
+                  </button>
+                </p>
               </div>
             ) : (
               <>
@@ -440,7 +530,7 @@ export const RegisterModal = ({ isOpen, onClose, onSwitchToLogin }) => {
           </div>
 
           {/* Body */}
-          <div className="p-5 sm:p-7">
+          <div className="p-4 sm:p-5">
 
             {/* ── STEP 3: SUCCESS SCREEN ── */}
             {step === 3 && (
@@ -465,13 +555,13 @@ export const RegisterModal = ({ isOpen, onClose, onSwitchToLogin }) => {
             {step !== 3 && (
               <>
                 {error && (
-                  <div className="mb-5 p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-sm font-medium flex items-center gap-2">
+                  <div className="mb-3 p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-sm font-medium flex items-center gap-2">
                     <span className="material-symbols-outlined text-[18px]">error</span>
                     {error}
                   </div>
                 )}
                 {resendSuccess && (
-                  <div className="mb-5 p-3 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 text-sm font-medium flex items-center gap-2">
+                  <div className="mb-3 p-3 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 text-sm font-medium flex items-center gap-2">
                     <span className="material-symbols-outlined text-[18px]">mark_email_read</span>
                     {resendSuccess}
                   </div>
@@ -487,7 +577,7 @@ export const RegisterModal = ({ isOpen, onClose, onSwitchToLogin }) => {
                   onClick={() => handleGoogleLogin()}
                   disabled={googleLoading}
                   type="button"
-                  className="w-full flex items-center justify-center gap-3 py-3 rounded-xl border-2 border-border-light dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200 font-bold hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-all mb-5 disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-border-light dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-200 font-bold hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-all mb-3 disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   {googleLoading ? (
                     <span className="w-5 h-5 border-2 border-neutral-300 border-t-primary rounded-full animate-spin" />
@@ -502,85 +592,85 @@ export const RegisterModal = ({ isOpen, onClose, onSwitchToLogin }) => {
                   {googleLoading ? "Signing in..." : "Continue with Google"}
                 </button>
 
-                <div className="flex items-center gap-4 mb-5">
+                <div className="flex items-center gap-4 mb-3">
                   <div className="h-px bg-border-light dark:bg-neutral-700 flex-1"></div>
                   <span className="text-xs font-semibold text-neutral-400">OR</span>
                   <div className="h-px bg-border-light dark:bg-neutral-700 flex-1"></div>
                 </div>
 
                 {/* Registration Form */}
-                <div className="space-y-4">
+                <div className="space-y-3">
                   <div>
-                    <label className="block text-sm font-semibold text-neutral-700 dark:text-neutral-300 mb-1.5">Full Name *</label>
+                    <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300 mb-1">Full Name *</label>
                     <div className="relative">
-                      <span className="absolute left-4 top-1/2 -translate-y-1/2 material-symbols-outlined text-[20px] text-neutral-400">person</span>
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 material-symbols-outlined text-[18px] text-neutral-400">person</span>
                       <input
                         type="text" name="fullName" value={form.fullName} onChange={handleChange}
                         placeholder="e.g. Ahmed Mohamed"
-                        className="w-full pl-11 pr-4 py-3 rounded-xl border-2 border-border-light dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white font-medium placeholder:text-neutral-400 focus:outline-none focus:border-primary/60 dark:focus:border-primary/60 focus:bg-white dark:focus:bg-neutral-700 transition-all"
+                        className="w-full pl-10 pr-4 py-2 rounded-xl border-2 border-border-light dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-sm font-medium placeholder:text-neutral-400 focus:outline-none focus:border-primary/60 dark:focus:border-primary/60 focus:bg-white dark:focus:bg-neutral-700 transition-all"
                       />
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-sm font-semibold text-neutral-700 dark:text-neutral-300 mb-1.5">Email *</label>
+                      <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300 mb-1">Email *</label>
                       <div className="relative">
-                        <span className="absolute left-4 top-1/2 -translate-y-1/2 material-symbols-outlined text-[20px] text-neutral-400">mail</span>
+                        <span className="absolute left-4 top-1/2 -translate-y-1/2 material-symbols-outlined text-[18px] text-neutral-400">mail</span>
                         <input
                           type="email" name="email" value={form.email} onChange={handleChange}
                           placeholder="you@example.com"
-                          className="w-full pl-11 pr-4 py-3 rounded-xl border-2 border-border-light dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white font-medium placeholder:text-neutral-400 focus:outline-none focus:border-primary/60 dark:focus:border-primary/60 focus:bg-white dark:focus:bg-neutral-700 transition-all"
+                          className="w-full pl-10 pr-4 py-2 rounded-xl border-2 border-border-light dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-sm font-medium placeholder:text-neutral-400 focus:outline-none focus:border-primary/60 dark:focus:border-primary/60 focus:bg-white dark:focus:bg-neutral-700 transition-all"
                         />
                       </div>
                     </div>
                     <div>
-                      <label className="block text-sm font-semibold text-neutral-700 dark:text-neutral-300 mb-1.5">Phone <span className="text-neutral-400 font-normal">(Optional)</span></label>
+                      <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300 mb-1">Phone <span className="text-neutral-400 font-normal">(Optional)</span></label>
                       <div className="relative">
-                        <span className="absolute left-4 top-1/2 -translate-y-1/2 material-symbols-outlined text-[20px] text-neutral-400">call</span>
+                        <span className="absolute left-4 top-1/2 -translate-y-1/2 material-symbols-outlined text-[18px] text-neutral-400">call</span>
                         <input
                           type="tel" name="phone" value={form.phone} onChange={handleChange}
                           placeholder="+44 7000 000000"
-                          className="w-full pl-11 pr-4 py-3 rounded-xl border-2 border-border-light dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white font-medium placeholder:text-neutral-400 focus:outline-none focus:border-primary/60 dark:focus:border-primary/60 focus:bg-white dark:focus:bg-neutral-700 transition-all"
+                          className="w-full pl-10 pr-4 py-2 rounded-xl border-2 border-border-light dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-sm font-medium placeholder:text-neutral-400 focus:outline-none focus:border-primary/60 dark:focus:border-primary/60 focus:bg-white dark:focus:bg-neutral-700 transition-all"
                         />
                       </div>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-sm font-semibold text-neutral-700 dark:text-neutral-300 mb-1.5">Password *</label>
+                      <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300 mb-1">Password *</label>
                       <div className="relative">
-                        <span className="absolute left-4 top-1/2 -translate-y-1/2 material-symbols-outlined text-[20px] text-neutral-400">lock</span>
+                        <span className="absolute left-4 top-1/2 -translate-y-1/2 material-symbols-outlined text-[18px] text-neutral-400">lock</span>
                         <input
                           type={showPassword ? "text" : "password"} name="password" value={form.password} onChange={handleChange}
                           placeholder="Min 8 chars"
-                          className="w-full pl-11 pr-10 py-3 rounded-xl border-2 border-border-light dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white font-medium placeholder:text-neutral-400 focus:outline-none focus:border-primary/60 dark:focus:border-primary/60 focus:bg-white dark:focus:bg-neutral-700 transition-all"
+                          className="w-full pl-10 pr-10 py-2 rounded-xl border-2 border-border-light dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-sm font-medium placeholder:text-neutral-400 focus:outline-none focus:border-primary/60 dark:focus:border-primary/60 focus:bg-white dark:focus:bg-neutral-700 transition-all"
                         />
                         <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-600">
-                          <span className="material-symbols-outlined text-[20px]">{showPassword ? "visibility_off" : "visibility"}</span>
+                          <span className="material-symbols-outlined text-[18px]">{showPassword ? "visibility_off" : "visibility"}</span>
                         </button>
                       </div>
                     </div>
                     <div>
-                      <label className="block text-sm font-semibold text-neutral-700 dark:text-neutral-300 mb-1.5">Confirm Password *</label>
+                      <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300 mb-1">Confirm Password *</label>
                       <div className="relative">
-                        <span className="absolute left-4 top-1/2 -translate-y-1/2 material-symbols-outlined text-[20px] text-neutral-400">lock</span>
+                        <span className="absolute left-4 top-1/2 -translate-y-1/2 material-symbols-outlined text-[18px] text-neutral-400">lock</span>
                         <input
                           type={showPassword ? "text" : "password"} name="confirmPassword" value={form.confirmPassword} onChange={handleChange}
                           placeholder="Re-enter"
-                          className="w-full pl-11 pr-4 py-3 rounded-xl border-2 border-border-light dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white font-medium placeholder:text-neutral-400 focus:outline-none focus:border-primary/60 dark:focus:border-primary/60 focus:bg-white dark:focus:bg-neutral-700 transition-all"
+                          className="w-full pl-10 pr-4 py-2 rounded-xl border-2 border-border-light dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white text-sm font-medium placeholder:text-neutral-400 focus:outline-none focus:border-primary/60 dark:focus:border-primary/60 focus:bg-white dark:focus:bg-neutral-700 transition-all"
                         />
                       </div>
                     </div>
                   </div>
 
-                  <label className="flex items-start gap-3 cursor-pointer group pt-1">
+                  <label className="flex items-start gap-2 cursor-pointer group pt-1">
                     <input
                       type="checkbox" checked={agreedTerms} onChange={e => setAgreedTerms(e.target.checked)}
-                      className="mt-0.5 w-4 h-4 rounded border-neutral-300 text-primary focus:ring-primary/30 accent-primary shrink-0"
+                      className="mt-0.5 w-3.5 h-3.5 rounded border-neutral-300 text-primary focus:ring-primary/30 accent-primary shrink-0"
                     />
-                    <span className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400 group-hover:text-neutral-700 dark:group-hover:text-neutral-300 transition-colors leading-snug">
+                    <span className="text-[11px] sm:text-xs text-neutral-500 dark:text-neutral-400 group-hover:text-neutral-700 dark:group-hover:text-neutral-300 transition-colors leading-snug">
                       I agree to the{" "}
                       <a href="/terms" className="text-primary dark:text-primary-400 font-semibold hover:underline">Terms & Conditions</a>
                       {" "}and{" "}
@@ -592,7 +682,7 @@ export const RegisterModal = ({ isOpen, onClose, onSwitchToLogin }) => {
                     type="button"
                     onClick={handleRegisterSubmit}
                     disabled={loading}
-                    className="btn-accent w-full py-3.5 mt-1 rounded-xl font-heading font-bold text-base shadow-button hover:shadow-lg transition-all hover:-translate-y-0.5 disabled:opacity-60 disabled:cursor-not-allowed disabled:translate-y-0 flex items-center justify-center gap-2"
+                    className="btn-accent w-full py-2.5 mt-1 rounded-xl font-heading font-bold text-sm shadow-button hover:shadow-lg transition-all hover:-translate-y-0.5 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                   >
                     {loading ? (
                       <><span className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Sending OTP...</>
@@ -672,7 +762,7 @@ export const RegisterModal = ({ isOpen, onClose, onSwitchToLogin }) => {
             )}
 
             {step !== 3 && (
-              <p className="text-center text-sm text-neutral-500 dark:text-neutral-400 mt-5">
+              <p className="text-center text-xs text-neutral-500 dark:text-neutral-400 mt-4">
                 Already have an account?{" "}
                 <button onClick={onSwitchToLogin} className="text-primary dark:text-primary-400 font-semibold hover:underline">
                   Sign In

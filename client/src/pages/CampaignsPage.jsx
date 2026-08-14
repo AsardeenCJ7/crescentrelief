@@ -62,10 +62,28 @@ const CampaignsPage = () => {
     r.sort((a, b) => {
       const pA = (a.raised || 0) / (a.goal || 1);
       const pB = (b.raised || 0) / (b.goal || 1);
-      if (sortBy === "priority")     { if (a.urgent && !b.urgent) return -1; if (!a.urgent && b.urgent) return 1; return pB - pA; }
+      
+      if (sortBy === "priority") { 
+        // 1. Emergency / Urgent first
+        if (a.urgent && !b.urgent) return -1; 
+        if (!a.urgent && b.urgent) return 1; 
+
+        // 2. Time left duration (ending soonest first)
+        const getDaysLeft = (c) => c.endDate ? Math.ceil((new Date(c.endDate).getTime() - Date.now()) / 86400000) : (c.daysLeft != null ? c.daysLeft : Infinity);
+        const timeA = getDaysLeft(a);
+        const timeB = getDaysLeft(b);
+        if (timeA !== timeB) return timeA - timeB;
+
+        // 3. Critical situation (lowest percentage funded first)
+        return pA - pB;
+      }
+      
       if (sortBy === "almostFunded") return pB - pA;
-      if (sortBy === "endingSoon")   return (a.endDate ? new Date(a.endDate) : Infinity) - (b.endDate ? new Date(b.endDate) : Infinity);
-      return new Date(b.createdAt) - new Date(a.createdAt);
+      if (sortBy === "endingSoon") {
+        const getDaysLeft = (c) => c.endDate ? Math.ceil((new Date(c.endDate).getTime() - Date.now()) / 86400000) : (c.daysLeft != null ? c.daysLeft : Infinity);
+        return getDaysLeft(a) - getDaysLeft(b);
+      }
+      return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
     });
     return r;
   }, [campaigns, searchQuery, activeCategory, urgentOnly, sortBy]);

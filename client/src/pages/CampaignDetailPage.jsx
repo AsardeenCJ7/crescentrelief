@@ -7,7 +7,8 @@ import DonationWidget from "../components/campaign/DonationWidget";
 import CampaignVideo from "../components/campaign/CampaignVideo";
 import ReactMarkdown from "react-markdown";
 import { useAuth } from "../context/AuthContext";
-import { Loader2 } from "lucide-react";
+import { Loader2, Share2, Link as LinkIcon } from "lucide-react";
+import { FaFacebook } from "react-icons/fa";
 
 const CampaignDetailPage = () => {
   const { id } = useParams();
@@ -15,33 +16,82 @@ const CampaignDetailPage = () => {
   const [campaign, setCampaign] = useState(null);
   const [loading, setLoading] = useState(true);
   
-  const { isAuthenticated, setShowLoginModal } = useAuth();
+  const { user, isAuthenticated, setShowLoginModal } = useAuth();
   const [isFavorite, setIsFavorite] = useState(false);
+  const [favoriteLoading, setFavoriteLoading] = useState(false);
 
-  const handleFavoriteClick = () => {
+  const handleFavoriteClick = async () => {
     if (!isAuthenticated) {
       setShowLoginModal(true);
       return;
     }
-    setIsFavorite(!isFavorite);
+    
+    try {
+      setFavoriteLoading(true);
+      if (isFavorite) {
+        await userService.removeFavourite(campaign?._id || id);
+        setIsFavorite(false);
+      } else {
+        await userService.addFavourite(campaign?._id || id);
+        setIsFavorite(true);
+      }
+    } catch (error) {
+      console.error("Error updating favourite:", error);
+    } finally {
+      setFavoriteLoading(false);
+    }
+  };
+
+  const getShareUrl = () => {
+    return `${window.location.origin}/campaigns/${campaign?._id || id}${user?.referralCode ? '?ref=' + user.referralCode : ''}`;
+  };
+
+  const handleWebShare = async () => {
+    const shareUrl = getShareUrl();
+    const shareData = {
+      title: campaign.title,
+      text: `Support this cause! ${campaign.title} ${campaign.urgent ? '- Urgent Appeal!' : ''}`,
+      url: shareUrl,
+    };
+    if (navigator.share) {
+      try {
+        await navigator.share(shareData);
+      } catch (err) {
+        console.error("Error sharing:", err);
+      }
+    } else {
+      navigator.clipboard.writeText(shareUrl);
+      alert("Link copied to clipboard!");
+    }
+  };
+
+  const handleFbShare = () => {
+    const fbUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(getShareUrl())}`;
+    window.open(fbUrl, 'facebook-share-dialog', 'width=800,height=600');
   };
 
   useEffect(() => {
     window.scrollTo(0, 0);
-    const fetchCampaign = async () => {
+    const fetchCampaignData = async () => {
       try {
         setLoading(true);
         const res = await campaignService.getById(id);
         setCampaign(res.data);
+        
+        if (isAuthenticated) {
+          const favRes = await userService.getFavourites();
+          const isFav = favRes.data.some(fav => fav._id === res.data._id);
+          setIsFavorite(isFav);
+        }
       } catch (error) {
-        console.error("Error fetching campaign:", error);
+        console.error("Error fetching campaign data:", error);
         navigate("/404");
       } finally {
         setLoading(false);
       }
     };
-    fetchCampaign();
-  }, [id, navigate]);
+    fetchCampaignData();
+  }, [id, navigate, isAuthenticated]);
 
   if (loading) {
     return (
@@ -92,14 +142,19 @@ const CampaignDetailPage = () => {
                 </div>
                 <button
                   onClick={handleFavoriteClick}
-                  className="w-12 h-12 bg-white/10 hover:bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center transition-colors border border-white/20"
+                  disabled={favoriteLoading}
+                  className="w-12 h-12 bg-white/10 hover:bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center transition-colors border border-white/20 disabled:opacity-50"
                 >
-                  <span 
-                    className={`material-symbols-outlined text-[24px] transition-colors ${isFavorite ? 'text-rose-500' : 'text-white'}`}
-                    style={{ fontVariationSettings: isFavorite ? "'FILL' 1" : "'FILL' 0" }}
-                  >
-                    favorite
-                  </span>
+                  {favoriteLoading ? (
+                    <Loader2 className="w-5 h-5 text-white animate-spin" />
+                  ) : (
+                    <span 
+                      className={`material-symbols-outlined text-[24px] transition-colors ${isFavorite ? 'text-rose-500' : 'text-white'}`}
+                      style={{ fontVariationSettings: isFavorite ? "'FILL' 1" : "'FILL' 0" }}
+                    >
+                      favorite
+                    </span>
+                  )}
                 </button>
               </div>
               <h1 className="font-heading font-extrabold text-4xl sm:text-5xl md:text-6xl text-white mb-5 tracking-tight text-balance leading-[1.1]">
@@ -237,6 +292,42 @@ const CampaignDetailPage = () => {
                       </span>
                     </a>
                   ))}
+                </div>
+              </div>
+            )}
+
+            {/* Social Sharing Section */}
+            {isAuthenticated && (
+              <div className="mt-8 bg-white dark:bg-neutral-900 rounded-3xl p-6 sm:p-8 md:p-10 shadow-card dark:shadow-none border border-border-light dark:border-neutral-800 relative overflow-hidden transition-colors duration-300">
+                <div className="absolute top-0 left-0 w-1.5 h-full bg-blue-500"></div>
+                <h3 className="font-heading font-bold text-2xl text-neutral-900 dark:text-white mb-2 flex items-center gap-3">
+                  <Share2 className="w-7 h-7 text-blue-500" />
+                  Share & Earn Rewards
+                </h3>
+                <p className="text-neutral-600 dark:text-neutral-400 mb-6 text-sm">
+                  Share your unique referral link. When friends donate through your link, your donor badge will upgrade!
+                </p>
+                
+                <div className="flex flex-col sm:flex-row gap-4">
+                  <button 
+                    onClick={handleFbShare}
+                    className="flex-1 flex items-center justify-center gap-2 bg-[#1877F2] hover:bg-[#166FE5] text-white font-bold py-3.5 px-6 rounded-xl transition-all shadow-md hover:shadow-lg active:scale-95"
+                  >
+                    <FaFacebook className="w-5 h-5" />
+                    Share on Facebook
+                  </button>
+                  <button 
+                    onClick={handleWebShare}
+                    className="flex-1 flex items-center justify-center gap-2 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-800 dark:text-white font-bold py-3.5 px-6 rounded-xl border border-neutral-200 dark:border-neutral-700 transition-all active:scale-95"
+                  >
+                    <LinkIcon className="w-5 h-5" />
+                    Copy Link / More
+                  </button>
+                </div>
+                
+                <div className="mt-5 p-4 bg-neutral-50 dark:bg-neutral-950 rounded-xl border border-neutral-200 dark:border-neutral-800">
+                  <p className="text-xs text-neutral-500 dark:text-neutral-500 font-medium uppercase tracking-wider mb-1">Your Unique Share Link</p>
+                  <p className="text-sm text-neutral-800 dark:text-neutral-300 font-mono break-all">{getShareUrl()}</p>
                 </div>
               </div>
             )}

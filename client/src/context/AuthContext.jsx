@@ -40,12 +40,15 @@ export const AuthProvider = ({ children }) => {
 
   const register = async (formData) => {
     try {
+      const referralCode = localStorage.getItem("referralCode") || undefined;
       const response = await authService.register({
         fullName: formData.fullName,
         email: formData.email,
         password: formData.password,
-        phone: formData.phone
+        phone: formData.phone,
+        referralCode
       });
+      localStorage.removeItem("referralCode");
       return response;
     } catch (error) {
       throw error;
@@ -75,7 +78,9 @@ export const AuthProvider = ({ children }) => {
   const googleAuth = async (googleUserData) => {
     try {
       if (!googleUserData) throw new Error("Google user data is required.");
-      const response = await authService.google(googleUserData);
+      const referralCode = localStorage.getItem("referralCode") || undefined;
+      const response = await authService.google({ ...googleUserData, referralCode });
+      localStorage.removeItem("referralCode");
       localStorage.setItem("token", response.accessToken);
       setUser(response.user);
       return response.user;

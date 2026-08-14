@@ -4,6 +4,38 @@ import User from "../models/User.js";
 import { asyncHandler, AppError } from "../middleware/errorHandler.js";
 import { v4 as uuidv4 } from "uuid";
 import crypto from "crypto";
+import Stripe from "stripe";
+
+// Lazy-init Stripe so that dotenv.config() has run before we read the env var
+let _stripe = null;
+function getStripe() {
+  if (!_stripe) {
+    _stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+  }
+  return _stripe;
+}
+
+// ─── @POST /api/donations/create-payment-intent ─────────────────────────
+export const createPaymentIntent = asyncHandler(async (req, res) => {
+  const { amount } = req.body;
+  if (!amount || amount < 1) {
+    throw new AppError("Invalid donation amount", 400);
+  }
+
+  const stripe = getStripe();
+
+  // Create a PaymentIntent with the order amount and currency
+  const paymentIntent = await stripe.paymentIntents.create({
+    amount: Math.round(amount * 100), // Stripe takes amounts in cents/pence
+    currency: "gbp",
+    payment_method_types: ['card'],
+  });
+
+  res.status(200).json({
+    success: true,
+    clientSecret: paymentIntent.client_secret,
+  });
+});
 
 // ─── @POST /api/campaigns/:id/donate ──────────────────────────────────────
 export const createDonation = asyncHandler(async (req, res) => {
@@ -99,7 +131,7 @@ export const createDonation = asyncHandler(async (req, res) => {
   }
 
   // Populate campaign info for response
-  await donation.populate("campaign", "title category image");
+  await donation.populate("campaign", "title category image slug");
 
   res.status(201).json({
     success: true,
@@ -111,7 +143,11 @@ export const createDonation = asyncHandler(async (req, res) => {
       amount: donation.amount,
       giftAidAmount: donation.giftAidAmount,
       campaign: donation.campaign,
+      paymentMethod: donation.paymentMethod,
+      donorName: donation.donorName,
+      donorEmail: donation.donorEmail,
       status: donation.status,
+      createdAt: donation.createdAt,
     },
   });
 });
@@ -259,6 +295,97 @@ export const getDonationStats = asyncHandler(async (req, res) => {
       recentDonations,
       topCampaigns,
       dailyTrend,
+    },
+  });
+});
+
+// ─── @GET /api/donations/activity (Admin - daily activity feed) ─────────────
+export const getDonationActivity = asyncHandler(async (req, res) => {
+  const { days = 30 } = req.query;
+  const startDate = new Date();
+  startDate.setDate(startDate.getDate() - parseInt(days));
+
+  const [dailyActivity, paymentMethodBreakdown, recentDonations, topDonors] = await Promise.all([
+    // Daily totals grouped by day
+    Donation.aggregate([
+      { $match: { status: "Completed", createdAt: { $gte: startDate } } },
+      {
+        $group: {
+          _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
+          total: { $sum: "$amount" },
+          count: { $sum: 1 },
+          stripe: { $sum: { $cond: [{ $eq: ["$paymentMethod", "stripe"] }, "$amount", 0] } },
+          paypal: { $sum: { $cond: [{ $eq: ["$paymentMethod", "paypal"] }, "$amount", 0] } },
+          card: { $sum: { $cond: [{ $eq: ["$paymentMethod", "card"] }, "$amount", 0] } },
+        },
+      },
+      { $sort: { _id: -1 } },
+    ]),
+
+    // Payment method breakdown totals
+    Donation.aggregate([
+      { $match: { status: "Completed", createdAt: { $gte: startDate } } },
+      {
+        $group: {
+          _id: "$paymentMethod",
+          total: { $sum: "$amount" },
+          count: { $sum: 1 },
+        },
+      },
+      { $sort: { total: -1 } },
+    ]),
+
+    // Recent donations with full user + campaign info
+    Donation.find({ status: "Completed", createdAt: { $gte: startDate } })
+      .sort("-createdAt")
+      .limit(50)
+      .populate("campaign", "title category image")
+      .populate("donor", "fullName email avatar badge")
+      .lean(),
+
+    // Top donors in period
+    Donation.aggregate([
+      { $match: { status: "Completed", createdAt: { $gte: startDate }, donor: { $exists: true } } },
+      {
+        $group: {
+          _id: "$donor",
+          totalDonated: { $sum: "$amount" },
+          count: { $sum: 1 },
+          lastDonation: { $max: "$createdAt" },
+        },
+      },
+      { $sort: { totalDonated: -1 } },
+      { $limit: 10 },
+      {
+        $lookup: {
+          from: "users",
+          localField: "_id",
+          foreignField: "_id",
+          as: "user",
+        },
+      },
+      { $unwind: "$user" },
+      {
+        $project: {
+          totalDonated: 1,
+          count: 1,
+          lastDonation: 1,
+          "user.fullName": 1,
+          "user.email": 1,
+          "user.avatar": 1,
+          "user.badge": 1,
+        },
+      },
+    ]),
+  ]);
+
+  res.status(200).json({
+    success: true,
+    data: {
+      dailyActivity,
+      paymentMethodBreakdown,
+      recentDonations,
+      topDonors,
     },
   });
 });
