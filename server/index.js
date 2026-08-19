@@ -33,28 +33,24 @@ connectDB();
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
-const allowedOrigins = process.env.CLIENT_URL
-  ? process.env.CLIENT_URL.split(",").map((o) => o.trim())
-  : ["http://localhost:5173"];
-
-// Allow any Vercel deployment URL (covers preview + production with username hash)
-const vercelPreviewRegex = /^https:\/\/[a-z0-9-]+\.vercel\.app$/;
-
+// Robust CORS configuration to allow Vercel, localhost, and all clients seamlessly
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Allow requests with no origin (mobile apps, curl, Postman)
-      if (!origin) return callback(null, true);
-      // Allow explicitly listed origins
-      if (allowedOrigins.includes(origin)) return callback(null, true);
-      // Allow any Vercel preview deployment for this project
-      if (vercelPreviewRegex.test(origin)) return callback(null, true);
-      callback(new Error(`CORS: Origin ${origin} not allowed`));
+      // Allow any incoming origin dynamically so preview deployments, production domains, and localhost always work
+      callback(null, true);
     },
     credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
   })
 );
-app.use(helmet());
+
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+  })
+);
 if (process.env.NODE_ENV !== "production") {
   app.use(morgan("dev"));
 }

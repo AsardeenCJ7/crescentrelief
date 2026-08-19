@@ -2,8 +2,10 @@
   "name": "crescentrelief",
   "version": "1.0.0",
   "description": "Crescent Relief - Islamic Charity Crowdfunding Platform",
-  "private": true,
+  "type": "module",
   "scripts": {
+    "start": "npm --prefix server start",
+    "build": "npm --prefix server install",
     "dev:client": "cd client && npm run dev",
     "dev:server": "cd server && npm run dev",
     "dev": "start /b cmd /c \"cd client && npm run dev\" && start /b cmd /c \"cd server && npm run dev\"",
