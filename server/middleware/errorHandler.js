@@ -15,6 +15,13 @@ export const errorHandler = (err, req, res, next) => {
   let message = err.message || "Internal Server Error";
   let errors = null;
 
+  // Ensure CORS headers are always present on error responses
+  const origin = req.headers.origin;
+  if (origin) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+  }
+
   // Mongoose CastError (invalid ObjectId)
   if (err.name === "CastError") {
     statusCode = 400;
