@@ -27,6 +27,18 @@ export const AuthProvider = ({ children }) => {
     fetchUser();
   }, []);
 
+  const refreshUser = async () => {
+    const token = localStorage.getItem("token");
+    if (token) {
+      try {
+        const response = await authService.getMe();
+        setUser(response.user);
+      } catch (error) {
+        console.error("Failed to refresh user:", error);
+      }
+    }
+  };
+
   const login = async (email, password) => {
     try {
       const response = await authService.login({ email, password });
@@ -106,7 +118,7 @@ export const AuthProvider = ({ children }) => {
 
   return (
     <AuthContext.Provider value={{ 
-      user, loading,
+      user, loading, refreshUser,
       login, register, verifyOtp, resendOtp, googleAuth, logout, isAuthenticated,
       showLoginModal, setShowLoginModal, showRegisterModal, setShowRegisterModal,
       usersList: [], tasksList: [],

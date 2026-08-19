@@ -17,6 +17,7 @@ import AdminUsers from "../pages/admin/AdminUsers";
 import AdminSettings from "../pages/admin/AdminSettings";
 import SetupPassword from "../pages/admin/SetupPassword";
 import ProtectedRoute from "../components/common/ProtectedRoute";
+import ResetPasswordPage from "../pages/ResetPasswordPage";
 
 const AppRoutes = ({ darkMode, toggleDark }) => (
   <Routes>
@@ -34,6 +35,7 @@ const AppRoutes = ({ darkMode, toggleDark }) => (
         <Route path="/settings" element={<SettingsPage />} />
       </Route>
       <Route path="/setup-password/:userId" element={<SetupPassword />} />
+      <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
       <Route path="*" element={<NotFoundPage />} />
     </Route>
 

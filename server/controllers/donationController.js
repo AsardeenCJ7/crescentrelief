@@ -5,6 +5,7 @@ import { asyncHandler, AppError } from "../middleware/errorHandler.js";
 import { v4 as uuidv4 } from "uuid";
 import crypto from "crypto";
 import Stripe from "stripe";
+import sendEmail from "../utils/sendEmail.js";
 
 // Lazy-init Stripe so that dotenv.config() has run before we read the env var
 let _stripe = null;
@@ -132,6 +133,48 @@ export const createDonation = asyncHandler(async (req, res) => {
 
   // Populate campaign info for response
   await donation.populate("campaign", "title category image slug");
+
+  // Send Donation Success Email in background
+  if (donationData.donorEmail) {
+    const donorName = donationData.donorName !== "Anonymous" ? donationData.donorName : "Generous Donor";
+    sendEmail({
+      email: donationData.donorEmail,
+      subject: `Thank you for your donation! 🌙`,
+      message: `Dear ${donorName}, thank you for your generous donation of £${amount} to ${donation.campaign.title}.`,
+      html: `
+        <div style="font-family: 'Segoe UI', sans-serif; max-width: 600px; margin: auto; padding: 0; border: 1px solid #e5e7eb; border-radius: 16px; overflow: hidden;">
+          <div style="background: linear-gradient(135deg, #0d9488, #0ea5e9); padding: 40px 30px; text-align: center;">
+            <h1 style="color: white; margin: 0; font-size: 28px;">Donation Successful! 🤍</h1>
+            <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0; font-size: 16px;">Jazakallah Khair for your incredible generosity.</p>
+          </div>
+          <div style="padding: 30px;">
+            <p style="font-size: 16px; color: #374151; margin: 0 0 15px;">Dear <strong>${donorName}</strong>,</p>
+            <p style="font-size: 15px; color: #4b5563; line-height: 1.6; margin: 0 0 20px;">
+              Thank you so much for your generous donation of <strong style="color: #0d9488;">£${amount}</strong> to the <strong style="color: #0d9488;">${donation.campaign.title}</strong> campaign.
+            </p>
+            <div style="background: #f0fdfa; border-left: 4px solid #0d9488; padding: 15px 20px; border-radius: 0 8px 8px 0; margin: 20px 0;">
+              <p style="font-size: 14px; color: #0d9488; font-weight: 600; margin: 0 0 8px;">Donation Details:</p>
+              <ul style="font-size: 14px; color: #4b5563; margin: 0; padding-left: 18px; line-height: 1.8;">
+                <li><strong>Transaction ID:</strong> ${donation.transactionId}</li>
+                <li><strong>Campaign:</strong> ${donation.campaign.title}</li>
+                <li><strong>Amount:</strong> £${amount}</li>
+                ${giftAid?.enabled ? '<li><strong>Gift Aid:</strong> +\u00a3' + donationData.giftAidAmount + ' (Thank you for boosting your donation!)</li>' : ''}
+              </ul>
+            </div>
+            <p style="font-size: 14px; color: #6b7280; line-height: 1.6; margin: 20px 0 0;">
+              Your support means the world to us and brings hope to those who need it most. You can track the impact of your donation in your donor dashboard.
+            </p>
+            <p style="font-size: 14px; color: #6b7280; margin: 25px 0 0;">
+              With gratitude,<br/><strong style="color: #374151;">The Crescent Relief Team</strong>
+            </p>
+          </div>
+          <div style="background: #f9fafb; padding: 15px 30px; text-align: center; border-top: 1px solid #e5e7eb;">
+            <p style="font-size: 12px; color: #9ca3af; margin: 0;">© ${new Date().getFullYear()} Crescent Relief. All rights reserved.</p>
+          </div>
+        </div>
+      `
+    }).catch(emailError => console.error("Error sending donation email:", emailError));
+  }
 
   res.status(201).json({
     success: true,

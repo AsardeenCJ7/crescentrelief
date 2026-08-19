@@ -25,7 +25,7 @@ export const protect = async (req, res, next) => {
     }
 
     // Verify token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || "fallback_secret_key_for_dev_mode_only");
 
     // Fetch user (exclude sensitive fields)
     const user = await User.findById(decoded.id).select("-password -refreshToken");
@@ -70,7 +70,7 @@ export const optionalAuth = async (req, res, next) => {
       : req.cookies?.accessToken;
 
     if (token) {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const decoded = jwt.verify(token, process.env.JWT_SECRET || "fallback_secret_key_for_dev_mode_only");
       req.user = await User.findById(decoded.id).select("-password -refreshToken");
     }
   } catch (_) {

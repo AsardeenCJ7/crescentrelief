@@ -7,12 +7,12 @@ import sendEmail from "../utils/sendEmail.js";
 
 // ─── Token Generator ───────────────────────────────────────────────────────
 const signAccessToken = (id) =>
-  jwt.sign({ id }, process.env.JWT_SECRET, {
+  jwt.sign({ id }, process.env.JWT_SECRET || "fallback_secret_key_for_dev_mode_only", {
     expiresIn: process.env.JWT_EXPIRES_IN || "7d",
   });
 
 const signRefreshToken = (id) =>
-  jwt.sign({ id }, process.env.JWT_SECRET + "_refresh", {
+  jwt.sign({ id }, (process.env.JWT_SECRET || "fallback_secret_key_for_dev_mode_only") + "_refresh", {
     expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || "30d",
   });
 
@@ -465,10 +465,22 @@ export const googleLogin = asyncHandler(async (req, res) => {
   let user = await User.findOne({ email });
 
   if (user) {
+    let updated = false;
     if (user.authProvider !== "google") {
       user.authProvider = "google";
       user.googleId = googleId;
-      if (avatar && !user.avatar) user.avatar = avatar;
+      updated = true;
+    }
+    if (avatar && !user.avatar) {
+      user.avatar = avatar;
+      updated = true;
+    }
+    if (user.status === "Unverified" || !user.emailVerified) {
+      user.status = "Active";
+      user.emailVerified = true;
+      updated = true;
+    }
+    if (updated) {
       await user.save({ validateBeforeSave: false });
     }
   } else {

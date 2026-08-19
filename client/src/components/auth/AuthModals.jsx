@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "../../context/AuthContext";
 import { useGoogleLogin } from '@react-oauth/google';
 import axios from 'axios';
+import { authService } from "../../services/api";
 
 const overlayVariants = {
   hidden: { opacity: 0 },
@@ -26,9 +27,12 @@ export const LoginModal = ({ isOpen, onClose, onSwitchToRegister }) => {
   const { login, googleAuth, verifyOtp, resendOtp } = useAuth();
   const navigate = useNavigate();
 
-  const [step, setStep] = useState(1); // 1 = login, 2 = success, 3 = verify-otp
+  const [step, setStep] = useState(1); // 1=login, 2=success, 3=verify-otp, 4=forgot-pw, 5=pw-email-sent
   const [loading, setLoading] = useState(false);
   const [unverifiedEmail, setUnverifiedEmail] = useState("");
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotError, setForgotError] = useState("");
 
   useEffect(() => {
     if (isOpen) {
@@ -38,6 +42,8 @@ export const LoginModal = ({ isOpen, onClose, onSwitchToRegister }) => {
       setShowPassword(false);
       setError("");
       setUnverifiedEmail("");
+      setForgotEmail("");
+      setForgotError("");
     }
   }, [isOpen]);
 
@@ -46,10 +52,18 @@ export const LoginModal = ({ isOpen, onClose, onSwitchToRegister }) => {
       setGoogleLoading(true);
       setError("");
       try {
+        // Fetch Google user profile with a timeout
         const userInfo = await axios.get(
           'https://www.googleapis.com/oauth2/v3/userinfo',
-          { headers: { Authorization: `Bearer ${tokenResponse.access_token}` } }
+          { 
+            headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
+            timeout: 8000,
+          }
         );
+
+        if (!userInfo.data?.email) {
+          throw new Error("Could not retrieve your Google account details. Please try again.");
+        }
         
         const loggedInUser = await googleAuth({
           email: userInfo.data.email,
@@ -67,16 +81,27 @@ export const LoginModal = ({ isOpen, onClose, onSwitchToRegister }) => {
           onClose();
         }, 1500);
       } catch (err) {
-        setError(err.message || "Google login failed. Please try again.");
+        if (err.code === "ECONNABORTED" || err.message?.includes("timeout")) {
+          setError("Google sign-in timed out. Please check your internet connection and try again.");
+        } else if (err.message === "Network Error" || !navigator.onLine) {
+          setError("Network error. Please check your internet connection and try again.");
+        } else {
+          setError(err.message || "Google sign-in failed. Please try again.");
+        }
       } finally {
         setGoogleLoading(false);
       }
     },
-    onError: () => {
-      setError("Google sign-in was cancelled or failed.");
+    onError: (errorResponse) => {
+      if (errorResponse?.error === "popup_closed_by_user" || errorResponse?.error === "access_denied") {
+        setError("Google sign-in was cancelled.");
+      } else {
+        setError("Google sign-in failed. Please try again or use email/password.");
+      }
       setGoogleLoading(false);
     }
   });
+
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -112,6 +137,21 @@ export const LoginModal = ({ isOpen, onClose, onSwitchToRegister }) => {
     }
   };
 
+  const handleForgotSubmit = async (e) => {
+    e.preventDefault();
+    if (!forgotEmail) { setForgotError("Please enter your email address."); return; }
+    setForgotError("");
+    setForgotLoading(true);
+    try {
+      await authService.forgotPassword({ email: forgotEmail });
+      setStep(5);
+    } catch (err) {
+      setForgotError(err.message || "Failed to send reset link. Please try again.");
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -139,7 +179,7 @@ export const LoginModal = ({ isOpen, onClose, onSwitchToRegister }) => {
                 <span className="material-symbols-outlined text-white text-[18px]">cruelty_free</span>
               </div>
               <span className="font-heading font-extrabold text-lg text-neutral-900 dark:text-white">
-                {step === 3 ? "Verify Email" : "Sign In"}
+                {step === 3 ? "Verify Email" : step === 4 ? "Forgot Password" : step === 5 ? "Check Your Email" : "Sign In"}
               </span>
             </div>
             <button
@@ -244,6 +284,89 @@ export const LoginModal = ({ isOpen, onClose, onSwitchToRegister }) => {
                   </button>
                 </p>
               </div>
+            ) : step === 4 ? (
+              /* ── STEP 4: Forgot Password Form ── */
+              <form onSubmit={handleForgotSubmit} className="space-y-5">
+                <div className="text-center">
+                  <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <span className="material-symbols-outlined text-blue-600 dark:text-blue-400 text-[32px]">lock_reset</span>
+                  </div>
+                  <h3 className="font-heading font-bold text-xl text-neutral-900 dark:text-white mb-1">Reset Password</h3>
+                  <p className="text-neutral-500 dark:text-neutral-400 text-sm">
+                    Enter your registered email and we'll send you a secure password reset link.
+                  </p>
+                </div>
+                {forgotError && (
+                  <div className="p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 text-sm font-medium flex items-center gap-2">
+                    <span className="material-symbols-outlined text-[18px]">error</span>
+                    {forgotError}
+                  </div>
+                )}
+                <div>
+                  <label className="text-sm font-semibold text-neutral-700 dark:text-neutral-300 mb-1.5 block">Email Address</label>
+                  <div className="relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 material-symbols-outlined text-[20px] text-neutral-400">mail</span>
+                    <input
+                      type="email"
+                      value={forgotEmail}
+                      onChange={(e) => setForgotEmail(e.target.value)}
+                      required
+                      autoFocus
+                      placeholder="you@example.com"
+                      className="w-full pl-11 pr-4 py-3 rounded-xl border-2 border-border-light dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-neutral-900 dark:text-white font-medium placeholder:text-neutral-400 focus:outline-none focus:border-primary/50 dark:focus:border-primary/50 focus:bg-white dark:focus:bg-neutral-700 transition-all"
+                    />
+                  </div>
+                </div>
+                <button
+                  type="submit"
+                  disabled={forgotLoading}
+                  className="btn-accent w-full py-3.5 rounded-xl font-heading font-bold text-base shadow-button hover:shadow-lg transition-all hover:-translate-y-0.5 disabled:opacity-60 flex items-center justify-center gap-2"
+                >
+                  {forgotLoading ? (
+                    <><span className="w-5 h-5 border-2 border-white/40 border-t-white rounded-full animate-spin" /> Sending...</>
+                  ) : (
+                    "Send Reset Link"
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStep(1)}
+                  className="w-full text-sm text-neutral-500 dark:text-neutral-400 hover:text-primary dark:hover:text-primary-400 font-semibold transition-colors flex items-center justify-center gap-1"
+                >
+                  <span className="material-symbols-outlined text-[16px]">arrow_back</span>
+                  Back to Sign In
+                </button>
+              </form>
+            ) : step === 5 ? (
+              /* ── STEP 5: Email Sent Confirmation ── */
+              <div className="flex flex-col items-center text-center py-6 space-y-4">
+                <div className="w-20 h-20 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
+                  <span className="material-symbols-outlined text-emerald-600 dark:text-emerald-400 text-[44px]">mark_email_read</span>
+                </div>
+                <h3 className="font-heading font-extrabold text-2xl text-neutral-900 dark:text-white">Check Your Email!</h3>
+                <p className="text-neutral-500 dark:text-neutral-400 text-sm leading-relaxed">
+                  We've sent a secure password reset link to{" "}
+                  <strong className="text-neutral-700 dark:text-neutral-300">{forgotEmail}</strong>.
+                  The link expires in <strong>15 minutes</strong>.
+                </p>
+                <p className="text-xs text-neutral-400 dark:text-neutral-500">
+                  Didn't receive it? Check your spam folder or{" "}
+                  <button
+                    type="button"
+                    onClick={() => setStep(4)}
+                    className="text-primary dark:text-primary-400 font-semibold hover:underline"
+                  >
+                    try again
+                  </button>.
+                </p>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="btn-accent px-8 py-3 rounded-xl font-heading font-bold text-sm shadow-button hover:shadow-lg transition-all mt-2"
+                >
+                  Done
+                </button>
+              </div>
             ) : (
               <>
                 {error && (
@@ -299,7 +422,11 @@ export const LoginModal = ({ isOpen, onClose, onSwitchToRegister }) => {
                   <div>
                     <div className="flex items-center justify-between mb-1.5">
                       <label className="text-sm font-semibold text-neutral-700 dark:text-neutral-300">Password</label>
-                      <button type="button" className="text-xs text-primary dark:text-primary-400 font-semibold hover:underline">
+                      <button
+                        type="button"
+                        onClick={() => { setForgotEmail(email); setForgotError(""); setStep(4); }}
+                        className="text-xs text-primary dark:text-primary-400 font-semibold hover:underline"
+                      >
                         Forgot Password?
                       </button>
                     </div>
@@ -387,10 +514,19 @@ export const RegisterModal = ({ isOpen, onClose, onSwitchToLogin }) => {
       setGoogleLoading(true);
       setError("");
       try {
+        // Fetch Google user profile with a timeout
         const userInfo = await axios.get(
           'https://www.googleapis.com/oauth2/v3/userinfo',
-          { headers: { Authorization: `Bearer ${tokenResponse.access_token}` } }
+          { 
+            headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
+            timeout: 8000,
+          }
         );
+
+        if (!userInfo.data?.email) {
+          throw new Error("Could not retrieve your Google account details. Please try again.");
+        }
+
         const loggedInUser = await googleAuth({
           email: userInfo.data.email,
           fullName: userInfo.data.name,
@@ -404,16 +540,27 @@ export const RegisterModal = ({ isOpen, onClose, onSwitchToLogin }) => {
           navigate("/dashboard");
         }
       } catch (err) {
-        setError(err.message || "Google sign-up failed. Please try again.");
+        if (err.code === "ECONNABORTED" || err.message?.includes("timeout")) {
+          setError("Google sign-in timed out. Please check your internet connection and try again.");
+        } else if (err.message === "Network Error" || !navigator.onLine) {
+          setError("Network error. Please check your internet connection and try again.");
+        } else {
+          setError(err.message || "Google sign-up failed. Please try again.");
+        }
       } finally {
         setGoogleLoading(false);
       }
     },
-    onError: () => {
-      setError("Google sign-in was cancelled or failed.");
+    onError: (errorResponse) => {
+      if (errorResponse?.error === "popup_closed_by_user" || errorResponse?.error === "access_denied") {
+        setError("Google sign-in was cancelled.");
+      } else {
+        setError("Google sign-in failed. Please try again or use email/password.");
+      }
       setGoogleLoading(false);
     }
   });
+
 
   const handleChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
 

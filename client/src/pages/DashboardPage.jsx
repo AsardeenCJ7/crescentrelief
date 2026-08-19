@@ -7,6 +7,7 @@ import {
   Wallet, Heart, Calendar, ChevronRight, Activity, Award, TrendingUp,
   LayoutDashboard, History, Medal, Download, Copy, CheckCircle2, Bookmark, Clock, Share2, ShieldCheck, Star, Loader2
 } from "lucide-react";
+import CertificateModal from "../components/common/CertificateModal";
 
 const TABS = [
   { id: 'overview', label: 'Overview', icon: <LayoutDashboard className="w-4 h-4" /> },
@@ -26,18 +27,27 @@ const itemVariants = {
 };
 
 export default function DashboardPage() {
-  const { user, isAuthenticated } = useAuth();
+  const { user, isAuthenticated, refreshUser } = useAuth();
   const [activeTab, setActiveTab] = useState('overview');
   
   const [donations, setDonations] = useState([]);
   const [favourites, setFavourites] = useState([]);
   const [loading, setLoading] = useState(true);
+  
+  const [isCertOpen, setIsCertOpen] = useState(false);
+  const [selectedDonation, setSelectedDonation] = useState(null);
+
+  const handleOpenCert = (donation) => {
+    setSelectedDonation(donation);
+    setIsCertOpen(true);
+  };
 
   useEffect(() => {
     if (!isAuthenticated) return;
     
     const fetchDashboardData = async () => {
       try {
+        await refreshUser(); // Refresh user stats (totalDonated, badges)
         const [donationsRes, favouritesRes] = await Promise.all([
           donationService.getMyDonations().catch(() => ({ data: [] })),
           userService.getFavourites().catch(() => ({ data: [] }))
@@ -121,12 +131,19 @@ export default function DashboardPage() {
               transition={{ duration: 0.3 }}
             >
               {activeTab === 'overview' && <OverviewTab user={user} donations={donations} />}
-              {activeTab === 'donations' && <DonationsTab donations={donations} />}
+              {activeTab === 'donations' && <DonationsTab donations={donations} onOpenCert={handleOpenCert} />}
               {activeTab === 'badges' && <BadgesTab user={user} />}
               {activeTab === 'favourites' && <FavouritesTab favourites={favourites} />}
             </motion.div>
           </AnimatePresence>
         )}
+
+        <CertificateModal 
+          isOpen={isCertOpen} 
+          onClose={() => setIsCertOpen(false)} 
+          donation={selectedDonation}
+          user={user}
+        />
 
       </div>
     </div>
@@ -204,7 +221,7 @@ function OverviewTab({ user, donations }) {
   );
 }
 
-function DonationsTab({ donations }) {
+function DonationsTab({ donations, onOpenCert }) {
   return (
     <motion.div variants={containerVariants} initial="hidden" animate="visible" className="bg-white dark:bg-neutral-800 rounded-3xl shadow-sm border border-border-light dark:border-neutral-700 overflow-hidden">
       <div className="p-6 md:p-8 border-b border-border-light dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800/50">
@@ -234,7 +251,10 @@ function DonationsTab({ donations }) {
               <div className="flex items-center justify-between md:flex-col md:items-end gap-3 md:gap-1 mt-2 md:mt-0 ml-16 md:ml-0">
                 <div className="text-xl font-bold text-neutral-900 dark:text-white">${donation.amount}</div>
                 {donation.status === 'Completed' && (
-                  <button className="text-sm font-semibold text-primary hover:text-primary-600 flex items-center gap-1 transition-colors">
+                  <button 
+                    onClick={() => onOpenCert(donation)}
+                    className="text-sm font-semibold text-primary hover:text-primary-600 flex items-center gap-1 transition-colors"
+                  >
                     <Download className="w-4 h-4" /> Certificate
                   </button>
                 )}

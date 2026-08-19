@@ -4,7 +4,7 @@ const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api/v1";
 
 const api = axios.create({
   baseURL: BASE_URL,
-  timeout: 10000,
+  timeout: 20000,
   headers: { "Content-Type": "application/json" },
 });
 
@@ -37,6 +37,8 @@ export const authService = {
   register: (payload) => api.post("/auth/register", payload),
   verifyOtp: (payload) => api.post("/auth/verify-otp", payload),
   resendOtp: (payload) => api.post("/auth/resend-otp", payload),
+  forgotPassword: (payload) => api.post("/auth/forgot-password", payload),
+  resetPassword: (token, payload) => api.post(`/auth/reset-password/${token}`, payload),
   logout: () => api.post("/auth/logout"),
   google: (payload) => api.post("/auth/google", payload),
   getMe: () => api.get("/auth/me"),
