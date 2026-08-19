@@ -37,8 +37,8 @@ const allowedOrigins = process.env.CLIENT_URL
   ? process.env.CLIENT_URL.split(",").map((o) => o.trim())
   : ["http://localhost:5173"];
 
-// Regex to allow any Vercel preview/production URL for this project
-const vercelPreviewRegex = /^https:\/\/crescentrelief(-[a-z0-9]+)*\.vercel\.app$/;
+// Allow any Vercel deployment URL (covers preview + production with username hash)
+const vercelPreviewRegex = /^https:\/\/[a-z0-9-]+\.vercel\.app$/;
 
 app.use(
   cors({
